@@ -46,16 +46,15 @@ introduced in this phase.
 
 ### pgvector handoff
 
-pgvector is not configured yet, so `Chunk` deliberately has no placeholder JSON
-or binary embedding field. When PostgreSQL and pgvector are added, Jing should:
+The Docker PostgreSQL image includes pgvector, and the first-time database
+initialization runs `CREATE EXTENSION IF NOT EXISTS vector`. `Chunk` still has no
+embedding field. When an embedding model is selected, Jing should:
 
-1. Add the `pgvector` Python dependency and enable the PostgreSQL `vector`
-   extension in infrastructure or a migration.
-2. Add an appropriately dimensioned `Vector(...)` column to `Chunk`; choose the
-   dimension only after the embedding model is selected.
-3. Add an HNSW or IVFFlat index after measuring the expected collection size and
+1. Add the `pgvector` Python dependency and an appropriately dimensioned
+   `Vector(...)` column to `Chunk` after the embedding model is selected.
+2. Add an HNSW or IVFFlat index after measuring the expected collection size and
    query behavior.
-4. Introduce Alembic at that point to migrate the schema rather than relying on
+3. Introduce Alembic at that point to migrate the schema rather than relying on
    `SQLModel.metadata.create_all()` in production.
 
 ## Local setup and checks
@@ -71,6 +70,35 @@ pytest
 ruff check .
 ruff format --check .
 ```
+
+For the API and PostgreSQL development stack, copy `.env.example` to `.env`
+and run:
+
+```bash
+docker compose up --build -d
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+docker compose exec db psql -U app -d app -c "SELECT extversion FROM pg_extension WHERE extname = 'vector';"
+```
+
+`/health` checks the API process. `/ready` returns HTTP 200 only if the database
+accepts a query and the `vector` extension is enabled; it returns HTTP 503
+otherwise. The database initialization script runs only when the PostgreSQL data
+volume is first created. On an existing database, enable the extension with
+`CREATE EXTENSION IF NOT EXISTS vector;` using a role allowed to create extensions.
+
+The default Docker credentials (`app`/`app`) are for local development. If you
+change `POSTGRES_USER`, `POSTGRES_PASSWORD`, or `POSTGRES_DB` in `.env`, also set
+`DATABASE_URL` there using the container hostname `db` and matching credentials.
+For an API run directly on your host, set `DATABASE_URL` with hostname
+`localhost` instead and run `uvicorn app.main:app --reload`. The API loads `.env`
+if present. Neither the API startup nor these health checks create application
+tables; schema migration work belongs to a later task.
+
+PostgreSQL is published on host port `5433` by default to avoid common conflicts
+on `5432`. Set `POSTGRES_PORT` to another free port if needed, and use the same
+port in a host-run `DATABASE_URL`. Container-to-container connections always use
+`db:5432`.
 
 ## Upload endpoint handoff for Jing
 
