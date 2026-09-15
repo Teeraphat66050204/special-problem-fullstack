@@ -137,7 +137,10 @@ remain available for other uses.
 
 `app.services.llm_service.generate_wiki(source_text: str) -> str` builds the
 existing Task 2.1 prompt, sends it to Ollama, and returns Markdown only when the
-existing structure validator accepts it. The Ollama HTTP details live in
+existing structure validator accepts it. For focused PDF sources, a provider-neutral
+finalization step copies exact readable title and metadata from selected pages,
+removes unsupported metadata bullets, and makes standalone missing-information
+markers exact. Unsafe marker explanations cause a service error. The Ollama HTTP details live in
 `OllamaClient`; callers can handle `LLMServiceError` subclasses for unavailable
 runtime, missing model, timeout, empty output, invalid structure, and other
 runtime errors. Structural validation checks headings, not factual grounding.
@@ -176,3 +179,23 @@ The source selector limits its scan to front matter; later chapters are not sent
 to the model. No document or Markdown is persisted. Set `OLLAMA_BASE_URL`,
 `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` in `.env` or your environment as
 needed; start Ollama and pull the configured model before running the command.
+
+## Local Wiki generation evaluation
+
+With the local sample PDFs restored and Ollama running, evaluate the indexed
+PDF/GroundTruth pairs and save a JSON report:
+
+```bash
+python scripts/evaluate_wiki_generation.py --output data/evaluation/wiki-report.json
+```
+
+Use `--ids document_007 document_123` or `--limit 3` for a smaller run. The
+script extracts each PDF, selects front-matter Wiki source, calls the existing
+LLM service, and continues after per-document failures. It prints generation
+counts, structure pass rate, common failure categories, and per-document notes.
+The JSON report includes generated Markdown and source-page numbers, but neither
+the full PDF text nor GroundTruth is sent to the model. Generated reports under
+`data/evaluation/` are ignored by Git. The checks and their limits are described
+in [docs/wiki-generation-evaluation.md](docs/wiki-generation-evaluation.md).
+Reports keep the raw Ollama reply and the source-backed final Markdown so
+model omissions and finalization changes remain visible.

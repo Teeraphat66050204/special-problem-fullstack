@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import httpx
 
 from app.config import Settings, get_settings
@@ -10,6 +12,7 @@ from app.prompts import (
     build_wiki_generation_prompt,
     validate_wiki_markdown,
 )
+from app.services.wiki_output import WikiOutputError, refine_wiki_markdown
 
 
 class LLMServiceError(RuntimeError):
@@ -43,6 +46,23 @@ class InvalidWikiMarkdownError(LLMServiceError):
         self.issues = issues
         codes = ", ".join(issue.code for issue in issues)
         super().__init__(f"Generated Wiki Markdown has invalid structure: {codes}")
+
+
+class InvalidWikiOutputError(LLMServiceError):
+    """Generated Wiki text has content that cannot be finalized safely."""
+
+    def __init__(self, message: str, raw_markdown: str) -> None:
+        self.raw_markdown = raw_markdown
+        super().__init__(message)
+
+
+@dataclass(frozen=True, slots=True)
+class WikiGenerationResult:
+    """Final Markdown plus raw model output for evaluation diagnostics."""
+
+    markdown: str
+    raw_markdown: str
+    refinement_changes: tuple[str, ...]
 
 
 class OllamaClient:
@@ -102,12 +122,23 @@ class OllamaClient:
         return markdown
 
 
-def generate_wiki(source_text: str) -> str:
-    """Build the existing prompt, generate Markdown, and validate its structure."""
+def generate_wiki_result(source_text: str) -> WikiGenerationResult:
+    """Generate and finalize Markdown, retaining the raw model reply for reviews."""
 
     prompt = build_wiki_generation_prompt(source_text)
-    markdown = OllamaClient(get_settings()).generate(prompt)
+    raw_markdown = OllamaClient(get_settings()).generate(prompt)
+    try:
+        refinement = refine_wiki_markdown(source_text, raw_markdown)
+    except WikiOutputError as exc:
+        raise InvalidWikiOutputError(str(exc), raw_markdown) from exc
+    markdown = refinement.markdown
     validation = validate_wiki_markdown(markdown)
     if not validation.is_valid:
         raise InvalidWikiMarkdownError(validation.issues)
-    return markdown
+    return WikiGenerationResult(markdown, raw_markdown, refinement.changes)
+
+
+def generate_wiki(source_text: str) -> str:
+    """Return source-backed Markdown through the existing service interface."""
+
+    return generate_wiki_result(source_text).markdown
