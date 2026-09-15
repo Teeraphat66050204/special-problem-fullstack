@@ -1,5 +1,12 @@
 # Task 2.1 Wiki generation prompt
 
+Task 2.3 refines this prompt for focused PDF source text. It separates aims from
+measured results, requires explicit evidence for tools/materials/technologies,
+preserves legible numbers and technical names, and puts the exact
+missing-information marker in unsupported sections. Damaged text-layer glyphs
+are not silently repaired. See [the evaluation guide](wiki-generation-evaluation.md)
+for the batch command and the limits of the GroundTruth comparison.
+
 Task 2.1 defines a provider-neutral prompt and a structural output contract. It
 does not call an LLM or select a model. Task 2.2 connects this contract to the
 standalone Ollama Wiki generation service.
