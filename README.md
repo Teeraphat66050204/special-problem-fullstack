@@ -1,8 +1,8 @@
 # Special Project Repository and Retrieval
 
 This repository currently contains Fourth's Phase 1 backend foundation for a
-PDF-to-Wiki application. It intentionally does **not** include OCR, LLM
-generation, chunking logic, embeddings, semantic search, or frontend
+PDF-to-Wiki application. It intentionally does **not** include OCR, a PDF-to-Wiki
+endpoint, chunking logic, embeddings, semantic search, or frontend
 code yet.
 
 ## Current Phase 1 flow
@@ -20,7 +20,7 @@ PDF extractor (all pages, text layer only)
 Return extraction data (persistence is future work)
         |
         v
-Future AI Wiki Generator -> review -> publish -> chunk -> embed
+Future PDF-to-Wiki orchestration -> review -> publish -> chunk -> embed
 ```
 
 The extractor accepts a filesystem path or a binary file-like object such as
@@ -119,3 +119,60 @@ return 500. Error responses use FastAPI's `detail` field; a missing `file` part
 receives its standard 422 validation response.
 
 No upload or extraction result is persisted to the database in this task.
+
+## Reusable sample dataset and Wiki input
+
+The small GroundTruth JSON records and mapping index live under `data/`.
+Sample PDFs belong in `data/sample/` locally and are ignored by Git to keep the
+repository small. The schema, archive layout, and restore instructions are in
+[`docs/evaluation-dataset.md`](docs/evaluation-dataset.md).
+
+Wiki generation uses a focused source prepared by
+`app.services.wiki_source.prepare_wiki_source` from extracted title/front-matter,
+abstract, keyword, and essential metadata pages. It does not send the entire
+PDF text to the LLM by default. The full-document extractor and upload response
+remain available for other uses.
+
+## Local Wiki generation service
+
+`app.services.llm_service.generate_wiki(source_text: str) -> str` builds the
+existing Task 2.1 prompt, sends it to Ollama, and returns Markdown only when the
+existing structure validator accepts it. The Ollama HTTP details live in
+`OllamaClient`; callers can handle `LLMServiceError` subclasses for unavailable
+runtime, missing model, timeout, empty output, invalid structure, and other
+runtime errors. Structural validation checks headings, not factual grounding.
+
+The default model is `qwen2.5:7b-instruct`. Settings read `OLLAMA_BASE_URL`
+(default `http://localhost:11434`), `OLLAMA_MODEL`,
+`OLLAMA_TIMEOUT_SECONDS` (default 120), and `OLLAMA_TEMPERATURE` (default 0.2)
+from environment variables or `.env`. The API container uses
+`http://host.docker.internal:11434` by default to reach Ollama on the host;
+set `OLLAMA_API_BASE_URL` if the runtime is elsewhere. This task adds no LLM
+route or database write.
+
+To test manually after starting Ollama, install/pull the selected model and
+pass a UTF-8 file containing extracted document text to the smoke script:
+
+```bash
+ollama pull qwen2.5:7b-instruct
+python scripts/smoke_ollama.py path/to/extracted-text.txt
+```
+
+If the runtime is not already running, start it with `ollama serve` in a separate
+terminal. Change `OLLAMA_MODEL` and the pull command together to use another
+installed model.
+
+To smoke-test the real PDF-to-Wiki pipeline, pass a local digital PDF to the
+focused-source script from the repository root:
+
+```bash
+python scripts/smoke_pdf_to_wiki.py data/sample/document_071.pdf
+```
+
+The script extracts the full PDF, prints the selected title/metadata, abstract,
+and keyword source text, and sends only that focused source to Ollama. It prints
+the generated Markdown and checks it with the existing Wiki structure validator.
+The source selector limits its scan to front matter; later chapters are not sent
+to the model. No document or Markdown is persisted. Set `OLLAMA_BASE_URL`,
+`OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` in `.env` or your environment as
+needed; start Ollama and pull the configured model before running the command.

@@ -1,0 +1,114 @@
+{
+  "additionalProperties": false,
+  "description": "Title-page metadata and abstracts for one sample document.",
+  "properties": {
+    "document_id": {
+      "pattern": "^document_\\d{3}$",
+      "title": "Document Id",
+      "type": "string"
+    },
+    "title_th": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Title Th"
+    },
+    "title_en": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Title En"
+    },
+    "students": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Students",
+      "type": "array"
+    },
+    "advisor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Advisor"
+    },
+    "academic_year": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Academic Year"
+    },
+    "abstract_th": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Abstract Th"
+    },
+    "abstract_en": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Abstract En"
+    },
+    "keywords": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Keywords",
+      "type": "array"
+    },
+    "raw_text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Raw Text"
+    }
+  },
+  "required": [
+    "document_id"
+  ],
+  "title": "GroundTruthRecord",
+  "type": "object"
+}

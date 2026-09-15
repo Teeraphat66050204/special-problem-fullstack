@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "documents": [
+    {
+      "document_id": "document_007",
+      "pdf": "sample/document_007.pdf",
+      "groundtruth": "groundtruth/document_007.json"
+    },
+    {
+      "document_id": "document_009",
+      "pdf": "sample/document_009.pdf",
+      "groundtruth": "groundtruth/document_009.json"
+    },
+    {
+      "document_id": "document_022",
+      "pdf": "sample/document_022.pdf",
+      "groundtruth": "groundtruth/document_022.json"
+    },
+    {
+      "document_id": "document_064",
+      "pdf": "sample/document_064.pdf",
+      "groundtruth": "groundtruth/document_064.json"
+    },
+    {
+      "document_id": "document_071",
+      "pdf": "sample/document_071.pdf",
+      "groundtruth": "groundtruth/document_071.json"
+    },
+    {
+      "document_id": "document_114",
+      "pdf": "sample/document_114.pdf",
+      "groundtruth": "groundtruth/document_114.json"
+    },
+    {
+      "document_id": "document_123",
+      "pdf": "sample/document_123.pdf",
+      "groundtruth": "groundtruth/document_123.json"
+    },
+    {
+      "document_id": "document_127",
+      "pdf": "sample/document_127.pdf",
+      "groundtruth": "groundtruth/document_127.json"
+    },
+    {
+      "document_id": "document_137",
+      "pdf": "sample/document_137.pdf",
+      "groundtruth": "groundtruth/document_137.json"
+    },
+    {
+      "document_id": "document_191",
+      "pdf": "sample/document_191.pdf",
+      "groundtruth": "groundtruth/document_191.json"
+    },
+    {
+      "document_id": "document_213",
+      "pdf": "sample/document_213.pdf",
+      "groundtruth": "groundtruth/document_213.json"
+    },
+    {
+      "document_id": "document_222",
+      "pdf": "sample/document_222.pdf",
+      "groundtruth": "groundtruth/document_222.json"
+    },
+    {
+      "document_id": "document_251",
+      "pdf": "sample/document_251.pdf",
+      "groundtruth": "groundtruth/document_251.json"
+    },
+    {
+      "document_id": "document_253",
+      "pdf": "sample/document_253.pdf",
+      "groundtruth": "groundtruth/document_253.json"
+    },
+    {
+      "document_id": "document_254",
+      "pdf": "sample/document_254.pdf",
+      "groundtruth": "groundtruth/document_254.json"
+    },
+    {
+      "document_id": "document_266",
+      "pdf": "sample/document_266.pdf",
+      "groundtruth": "groundtruth/document_266.json"
+    },
+    {
+      "document_id": "document_283",
+      "pdf": "sample/document_283.pdf",
+      "groundtruth": "groundtruth/document_283.json"
+    },
+    {
+      "document_id": "document_295",
+      "pdf": "sample/document_295.pdf",
+      "groundtruth": "groundtruth/document_295.json"
+    },
+    {
+      "document_id": "document_335",
+      "pdf": "sample/document_335.pdf",
+      "groundtruth": "groundtruth/document_335.json"
+    },
+    {
+      "document_id": "document_339",
+      "pdf": "sample/document_339.pdf",
+      "groundtruth": "groundtruth/document_339.json"
+    }
+  ]
+}
