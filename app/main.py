@@ -4,9 +4,11 @@ from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.api.upload import router as upload_router
 from app.db import get_engine
 
 app = FastAPI(title="Special Problem Repository API")
+app.include_router(upload_router)
 
 
 @app.get("/health")

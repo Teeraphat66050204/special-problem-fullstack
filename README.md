@@ -1,23 +1,23 @@
 # Special Project Repository and Retrieval
 
 This repository currently contains Fourth's Phase 1 backend foundation for a
-PDF-to-Wiki application. It intentionally does **not** include upload routes,
-OCR, LLM generation, chunking logic, embeddings, semantic search, or frontend
+PDF-to-Wiki application. It intentionally does **not** include OCR, LLM
+generation, chunking logic, embeddings, semantic search, or frontend
 code yet.
 
 ## Current Phase 1 flow
 
 ```text
-Future POST /api/upload
+POST /api/upload
         |
         v
-Save original digital PDF
+Store digital PDF temporarily
         |
         v
 PDF extractor (all pages, text layer only)
         |
         v
-Persist Document metadata + raw_text
+Return extraction data (persistence is future work)
         |
         v
 Future AI Wiki Generator -> review -> publish -> chunk -> embed
@@ -100,21 +100,22 @@ on `5432`. Set `POSTGRES_PORT` to another free port if needed, and use the same
 port in a host-run `DATABASE_URL`. Container-to-container connections always use
 `db:5432`.
 
-## Upload endpoint handoff for Jing
+## Digital PDF upload
 
-The future `POST /api/upload` route should remain thin:
+Send one `file` part as `multipart/form-data` to `POST /api/upload`. Its declared
+content type must be `application/pdf`; the PDF header and extractor also validate
+the content. The default maximum size is 20 MiB, configurable with
+`MAX_UPLOAD_BYTES`. The upload is copied to a generated temporary directory and
+removed after extraction. The original filename is used only as a display
+basename in the response.
 
-1. Validate the upload and save the original PDF under a unique `storage_key`.
-2. Mark a new `Document` as `processing`.
-3. Pass the saved path or `UploadFile.file` to
-   `app.services.pdf_extractor.extract_pdf`.
-4. Persist `full_text`, `page_count`, and a final `completed` status. For an
-   expected user/input error such as an invalid or encrypted PDF, persist
-   `failed` and return an appropriate 4xx response. Treat unexpected extraction
-   or internal failures as server errors and normally return a 5xx response.
-5. Pass the persisted document to the future Wiki generator in a separate
-   service. Do not add generation logic to the upload route or extractor.
+The JSON response contains `filename`, `page_count`, `raw_text`, `pages` (with
+one-based `page_number` and `text`), and `warnings` (with `code`, `message`, and
+optional `page_number`). A valid PDF without a text layer returns HTTP 200 with
+empty `raw_text` and the extractor's warnings. Unsupported media type returns
+415; oversize upload returns 413; invalid, encrypted, or zero-page PDFs return
+422; an empty upload returns 400. Unexpected extraction or temporary-file errors
+return 500. Error responses use FastAPI's `detail` field; a missing `file` part
+receives its standard 422 validation response.
 
-If page-level text must later be stored independently, add a dedicated page
-entity or retain page metadata while chunking. Do not encode page boundaries by
-rewriting the extracted Thai text.
+No upload or extraction result is persisted to the database in this task.
