@@ -3,6 +3,12 @@ services:
     build: .
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://app:app@db:5432/app}
+      OLLAMA_BASE_URL: ${OLLAMA_API_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
+      OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE:-0.2}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     depends_on:

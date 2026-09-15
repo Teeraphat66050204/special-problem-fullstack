@@ -1,8 +1,8 @@
 # Task 2.1 Wiki generation prompt
 
 Task 2.1 defines a provider-neutral prompt and a structural output contract. It
-does not call an LLM or select a model. Task 2.2 can later connect this contract
-to the chosen LLM integration.
+does not call an LLM or select a model. Task 2.2 connects this contract to the
+standalone Ollama Wiki generation service.
 
 ## Fixed Wiki structure
 
@@ -41,6 +41,12 @@ instructions.
 ## Validation and Task 2.2 handoff
 
 `validate_wiki_markdown` checks the title and fixed level-two structure only. It
-does not judge writing quality or factual accuracy. Task 2.2 will provide the
-prompt returned by `build_wiki_generation_prompt` to an LLM and can reject or
-retry structurally invalid output using this validator.
+does not judge writing quality or factual accuracy. Task 2.2 sends the prompt
+returned by `build_wiki_generation_prompt` to Ollama and rejects structurally
+invalid output using this validator.
+
+The intended Task 2.4 input is the focused `source_text` returned by
+`app.services.wiki_source.prepare_wiki_source`, based on title/front-matter,
+abstract, keyword, and essential metadata pages. Full PDF text and dataset
+GroundTruth `raw_text` are not sent to the model by default. See
+[`evaluation-dataset.md`](evaluation-dataset.md) for the selection policy.
