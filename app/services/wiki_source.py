@@ -50,11 +50,35 @@ class WikiSourceSelection:
     selected_pages: tuple[int, ...]
 
 
-def _keyword_line(text: str) -> str | None:
-    for line in text.splitlines():
+def _keyword_section(text: str) -> str | None:
+    """Keep a keyword label and comma-continued wrapped lines only."""
+
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
         if _KEYWORDS.search(line):
-            return line.strip()
+            section = [line.strip()]
+            for continuation in lines[index + 1 :]:
+                if not section[-1].rstrip().endswith((",", ";")):
+                    break
+                if not continuation.strip():
+                    continue
+                section.append(continuation.strip())
+            return "\n".join(section)
     return None
+
+
+def _keyword_continuation(text: str) -> str | None:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if lines and len(lines[0]) <= 3 and lines[0].isalnum():
+        lines.pop(0)
+    if not lines:
+        return None
+    section = [lines[0]]
+    for line in lines[1:]:
+        if not section[-1].rstrip().endswith((",", ";")):
+            break
+        section.append(line)
+    return "\n".join(section)
 
 
 def prepare_wiki_source(
@@ -127,9 +151,14 @@ def prepare_wiki_source(
     for page in pages.values():
         if len(selected) >= policy.max_source_pages:
             break
-        keyword_line = _keyword_line(page.text)
-        if keyword_line:
-            add_page(page, "keywords", keyword_line)
+        keyword_section = _keyword_section(page.text)
+        if keyword_section:
+            add_page(page, "keywords", keyword_section)
+            if keyword_section.rstrip().endswith((",", ";")):
+                following = pages.get(page.page_number + 1)
+                continuation = _keyword_continuation(following.text) if following else None
+                if continuation:
+                    add_page(following, "keyword continuation", continuation)
 
     retained_numbers = set(list(selected)[: policy.max_source_pages])
     selected_pages = tuple(sorted(retained_numbers))

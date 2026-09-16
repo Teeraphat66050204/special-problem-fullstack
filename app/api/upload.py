@@ -13,6 +13,7 @@ from app.services.pdf_extractor import (
     EncryptedPdfError,
     InvalidPdfError,
     PdfExtractionError,
+    PdfExtractionResult,
     PdfExtractionWarning,
     PdfPageText,
     extract_pdf,
@@ -32,7 +33,7 @@ class UploadResponse(BaseModel):
     warnings: tuple[PdfExtractionWarning, ...]
 
 
-def _display_filename(filename: str | None) -> str:
+def display_filename(filename: str | None) -> str:
     """Keep only a display basename; uploaded names never form filesystem paths."""
 
     return (filename or "").replace("\\", "/").rsplit("/", 1)[-1] or "upload.pdf"
@@ -56,11 +57,8 @@ def _copy_upload(source: UploadFile, destination: Path, max_bytes: int) -> None:
         raise HTTPException(status_code=400, detail="The uploaded file is empty")
 
 
-@router.post("/api/upload", response_model=UploadResponse)
-def upload_pdf(
-    file: Annotated[UploadFile, File(description="Digital PDF to extract")],
-) -> UploadResponse:
-    """Extract a digital PDF without keeping the upload or persisting data."""
+def extract_uploaded_pdf(file: UploadFile) -> PdfExtractionResult:
+    """Apply upload checks and extract a safely stored temporary PDF."""
 
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=415, detail="Only application/pdf uploads are supported")
@@ -82,8 +80,19 @@ def upload_pdf(
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Could not process uploaded PDF") from exc
 
+    return result
+
+
+@router.post("/api/upload", response_model=UploadResponse)
+def upload_pdf(
+    file: Annotated[UploadFile, File(description="Digital PDF to extract")],
+) -> UploadResponse:
+    """Extract a digital PDF without keeping the upload or persisting data."""
+
+    result = extract_uploaded_pdf(file)
+
     return UploadResponse(
-        filename=_display_filename(file.filename),
+        filename=display_filename(file.filename),
         page_count=result.page_count,
         raw_text=result.full_text,
         pages=result.pages,
