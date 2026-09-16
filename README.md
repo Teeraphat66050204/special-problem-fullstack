@@ -1,11 +1,10 @@
 # Special Project Repository and Retrieval
 
-This repository currently contains Fourth's Phase 1 backend foundation for a
-PDF-to-Wiki application. It intentionally does **not** include OCR, a PDF-to-Wiki
-endpoint, chunking logic, embeddings, semantic search, or frontend
-code yet.
+This repository contains the backend foundation and an in-memory PDF-to-Draft-Wiki
+flow. It does not include OCR, Wiki publishing/persistence, chunking, embeddings,
+semantic search, or frontend code yet.
 
-## Current Phase 1 flow
+## Current API flows
 
 ```text
 POST /api/upload
@@ -20,7 +19,15 @@ PDF extractor (all pages, text layer only)
 Return extraction data (persistence is future work)
         |
         v
-Future PDF-to-Wiki orchestration -> review -> publish -> chunk -> embed
+Future review -> publish -> chunk -> embed
+
+POST /api/wiki/generate
+        |
+        v
+Temporary PDF -> full extraction -> focused title/abstract/keyword source
+        |
+        v
+Ollama/Qwen -> source-backed finalization -> Draft Wiki JSON (no persistence)
 ```
 
 The extractor accepts a filesystem path or a binary file-like object such as
@@ -120,6 +127,44 @@ receives its standard 422 validation response.
 
 No upload or extraction result is persisted to the database in this task.
 
+## Draft Wiki generation API
+
+Send a digital PDF as the `file` part of a `multipart/form-data` request to
+`POST /api/wiki/generate`. The route uses the same temporary-file, PDF validation,
+and size-limit handling as `/api/upload`. It extracts all pages, selects only
+front-matter Wiki source, calls the existing Ollama service, and returns a
+validated draft without writing to PostgreSQL. The route and request schema are
+visible at `/docs`.
+
+The JSON response includes `status: "draft"`, `original_filename`, `page_count`, `selected_pages`
+(one-based), `generated_markdown`, `structure_valid`, and extractor `warnings`.
+Source-backed metadata fields are `title`, `english_title`, `students`,
+`student_ids`, `advisor`, `academic_year`, and explicit `keywords`; missing values
+remain `null` or empty arrays. No full PDF text is returned or sent to Ollama.
+
+An empty upload returns 400, oversize 413, unsupported media type 415, and an
+invalid PDF or PDF without usable front-matter text 422. Ollama runtime/model
+unavailability returns 503, timeout 504, and invalid generated Wiki 502.
+Unexpected extraction/generation failures return 500. Errors use FastAPI's
+`detail` field.
+
+For a real local smoke test, start the API and Ollama, pull the configured model,
+restore a sample PDF under `data/sample/`, then run from the repository root:
+
+```bash
+ollama pull qwen2.5:7b-instruct
+curl -X POST http://localhost:8000/api/wiki/generate \
+  -F "file=@data/sample/document_071.pdf;type=application/pdf"
+```
+
+On PowerShell, run the request on one line:
+
+```powershell
+curl.exe -X POST http://localhost:8000/api/wiki/generate -F "file=@data/sample/document_071.pdf;type=application/pdf"
+```
+
+The response is a draft for review; the PDF and Markdown are not persisted.
+
 ## Reusable sample dataset and Wiki input
 
 The small GroundTruth JSON records and mapping index live under `data/`.
@@ -145,13 +190,22 @@ markers exact. Unsafe marker explanations cause a service error. The Ollama HTTP
 runtime, missing model, timeout, empty output, invalid structure, and other
 runtime errors. Structural validation checks headings, not factual grounding.
 
+Before strict structure validation, finalization maps only known heading aliases
+to the seven canonical headings, inserts wholly missing sections with the exact
+missing-information marker, and merges distinct content under duplicate canonical
+headings. A model-produced `คำสำคัญ` section is folded into the overview as a
+normal keyword line and is not accepted as an eighth heading. Other unknown
+headings remain so the strict validator can reject them. The smoke script and
+draft API both use this same generation path.
+
 The default model is `qwen2.5:7b-instruct`. Settings read `OLLAMA_BASE_URL`
 (default `http://localhost:11434`), `OLLAMA_MODEL`,
 `OLLAMA_TIMEOUT_SECONDS` (default 120), and `OLLAMA_TEMPERATURE` (default 0.2)
 from environment variables or `.env`. The API container uses
 `http://host.docker.internal:11434` by default to reach Ollama on the host;
-set `OLLAMA_API_BASE_URL` if the runtime is elsewhere. This task adds no LLM
-route or database write.
+set `OLLAMA_API_BASE_URL` for Compose if the runtime is elsewhere. The direct
+host-run API reads `OLLAMA_BASE_URL`. Neither generation route writes to the
+database.
 
 To test manually after starting Ollama, install/pull the selected model and
 pass a UTF-8 file containing extracted document text to the smoke script:

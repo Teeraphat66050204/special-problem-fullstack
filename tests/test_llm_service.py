@@ -130,7 +130,7 @@ def test_invalid_markdown_structure_is_rejected(settings, monkeypatch) -> None:
     with pytest.raises(llm_service.InvalidWikiMarkdownError) as failure:
         llm_service.generate_wiki("Source text")
 
-    assert WikiStructureIssueCode.MISSING_REQUIRED_HEADING in {
+    assert WikiStructureIssueCode.UNEXPECTED_LEVEL_TWO_HEADING in {
         issue.code for issue in failure.value.issues
     }
 

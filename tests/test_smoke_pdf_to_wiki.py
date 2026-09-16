@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.prompts import REQUIRED_WIKI_HEADINGS, validate_wiki_markdown
+from app.services import llm_service
 from app.services.llm_service import (
     InvalidWikiMarkdownError,
     OllamaTimeoutError,
@@ -144,3 +145,31 @@ def test_explicit_markdown_validation_rejects_invalid_output(
     output = capsys.readouterr()
     assert "Generated Wiki Markdown:\n# Title only" in output.out
     assert "Invalid Wiki Markdown:" in output.err
+
+
+def test_smoke_uses_shared_finalizer_for_document_071_heading_failure(
+    pdf_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    raw = (
+        "# ชื่อโครงงาน\n\n"
+        "## ภาพรวมโครงงาน\nเนื้อหาในบทคัดย่อ\n\n"
+        "## วัตถุประสงค์\nวัตถุประสงค์จากเอกสาร\n\n"
+        "## วิธีการ\nวิธีจากเอกสาร\n\n"
+        "## คำสำคัญ\nภาษาไทย, ระบบสารสนเทศ\n\n"
+        "## ผลการศึกษา\nผลจากเอกสาร\n\n"
+        "## สรุป\nสรุปจากเอกสาร"
+    )
+    monkeypatch.setattr(llm_service.OllamaClient, "generate", lambda self, prompt: raw)
+
+    assert smoke_pdf_to_wiki.run(pdf_path) == 0
+
+    output = capsys.readouterr().out
+    assert "Wiki Markdown structure: valid" in output
+    assert "## ผลลัพธ์" in output
+    assert "## ผลการศึกษา" not in output
+    assert "## วิธีการ" not in output
+    assert "## คำสำคัญ" not in output
+    assert "## วิธีดำเนินงาน" in output
+    assert "คำสำคัญ: ค้นคืนข้อมูล" in output
+    assert "ภาษาไทย, ระบบสารสนเทศ" not in output
+    assert "ผลจากเอกสาร" in output
