@@ -1,8 +1,8 @@
 # Special Project Repository and Retrieval
 
-This repository contains the backend foundation and an in-memory PDF-to-Draft-Wiki
-flow. It does not include OCR, Wiki publishing/persistence, chunking, embeddings,
-semantic search, or frontend code yet.
+This repository contains the backend foundation, an in-memory PDF-to-Draft-Wiki
+flow, and deterministic Wiki Markdown chunking. It does not include OCR, Wiki
+publishing/persistence, embeddings, semantic search, or frontend code yet.
 
 ## Current API flows
 
@@ -19,7 +19,7 @@ PDF extractor (all pages, text layer only)
 Return extraction data (persistence is future work)
         |
         v
-Future review -> publish -> chunk -> embed
+Future review -> publish -> deterministic chunker -> embed
 
 POST /api/wiki/generate
         |
@@ -253,3 +253,27 @@ the full PDF text nor GroundTruth is sent to the model. Generated reports under
 in [docs/wiki-generation-evaluation.md](docs/wiki-generation-evaluation.md).
 Reports keep the raw Ollama reply and the source-backed final Markdown so
 model omissions and finalization changes remain visible.
+
+## Wiki Markdown chunking
+
+`app.services.wiki_chunker.chunk_wiki_markdown` prepares edited or published
+Markdown for later embedding while preserving exact source substrings, heading
+context, order, character offsets, and optional document/Wiki provenance. The
+defaults are 1,200 characters with up to 150 boundary-aligned overlap characters.
+Heading boundaries are preferred, followed by paragraphs, lines, sentence-like
+punctuation, spaces, and finally character fallback.
+
+Task 3.1 only returns immutable in-memory chunk records. It does not generate
+embeddings or write to PostgreSQL. The full strategy and overlap contract are in
+[`docs/wiki-chunking.md`](docs/wiki-chunking.md).
+
+To inspect how a real generated or edited Wiki page is chunked, run:
+
+```bash
+python scripts/smoke_wiki_chunking.py path/to/wiki.md
+```
+
+The script reads the file as UTF-8 and prints each chunk's section context,
+covered headings, character count, exact source offsets, and full content. It
+uses the chunker's default size and overlap and does not call Ollama, an API, or
+PostgreSQL.

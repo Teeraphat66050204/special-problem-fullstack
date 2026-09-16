@@ -13,6 +13,12 @@ from app.services.pdf_extractor import (
     extract_pdf,
     normalize_text,
 )
+from app.services.wiki_chunker import (
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    WikiChunk,
+    chunk_wiki_markdown,
+)
 
 __all__ = [
     "EmptyPdfError",
@@ -24,6 +30,10 @@ __all__ = [
     "PdfInputError",
     "PdfPageText",
     "WarningCode",
+    "WikiChunk",
+    "DEFAULT_CHUNK_OVERLAP",
+    "DEFAULT_CHUNK_SIZE",
+    "chunk_wiki_markdown",
     "extract_pdf",
     "normalize_text",
 ]
