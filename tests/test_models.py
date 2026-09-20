@@ -40,6 +40,9 @@ def test_document_wiki_and_chunk_relationships(engine) -> None:
         academic_year=2569,
         storage_key="documents/project.pdf",
         raw_text="Source page text",
+        extraction_data=(
+            '{"version":1,"pages":[{"page_number":1,"text":"Source page text"}],"warnings":[]}'
+        ),
         page_count=1,
         extraction_status=ExtractionStatus.COMPLETED,
     )
@@ -124,6 +127,20 @@ def test_default_model_lifecycle_values() -> None:
     assert wiki_page.version == 1
     assert wiki_page.is_published is False
     assert document.created_at.tzinfo is not None
+
+
+def test_completed_document_requires_persisted_extraction_data(engine) -> None:
+    document = Document(
+        original_filename="project.pdf",
+        storage_key="documents/project.pdf",
+        raw_text="Source text",
+        extraction_status=ExtractionStatus.COMPLETED,
+    )
+
+    with Session(engine) as session:
+        session.add(document)
+        with pytest.raises(IntegrityError):
+            session.commit()
 
 
 def test_wiki_version_is_unique_per_document(engine) -> None:

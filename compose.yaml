@@ -7,6 +7,12 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
       OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
       OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE:-0.2}
+      OCR_PROVIDER: ${OCR_PROVIDER:-disabled}
+      TYPHOON_API_KEY: ${TYPHOON_API_KEY:-}
+      TYPHOON_BASE_URL: ${TYPHOON_BASE_URL:-https://api.opentyphoon.ai/v1}
+      TYPHOON_OCR_MODEL: ${TYPHOON_OCR_MODEL:-typhoon-ocr}
+      OCR_TIMEOUT_SECONDS: ${OCR_TIMEOUT_SECONDS:-120}
+      OCR_MAX_PAGES: ${OCR_MAX_PAGES:-6}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from app.datasets.groundtruth import load_dataset_index, load_groundtruth
-from app.services.pdf_extractor import PdfExtractionResult, PdfPageText
+from app.services.pdf_extractor import PdfExtractionResult, PdfPageText, TextProvenance
+from app.services.wiki_evidence import collect_wiki_source_evidence
 from app.services.wiki_source import WikiSourcePolicy, prepare_wiki_source
 
 DATA_ROOT = Path(__file__).resolve().parents[1] / "data"
@@ -109,6 +110,50 @@ def test_wiki_source_selects_front_matter_abstracts_and_keywords() -> None:
     assert "Unrelated chapter content" not in selection.source_text
     assert "Long body chapter" not in selection.source_text
     assert extraction.full_text not in selection.source_text
+
+
+def test_wiki_source_uses_ocr_markdown_abstracts_and_preserves_page_provenance() -> None:
+    thai_ocr = "## บทคัดย่อ\nเนื้อหาบทคัดย่อจาก OCR ตามต้นฉบับ\n\n## คำสำคัญ\nโอซีอาร์, เอกสาร"
+    english_ocr = "## Abstract\nEnglish abstract recovered faithfully by OCR."
+    extraction = PdfExtractionResult(
+        page_count=5,
+        full_text="not used",
+        pages=(
+            PdfPageText(1, "ชื่อโครงงาน ระบบเอกสาร"),
+            PdfPageText(2, "DOCUMENT PROCESSING SYSTEM"),
+            PdfPageText(3, "ปีการศึกษา 2566"),
+            PdfPageText(
+                4,
+                thai_ocr,
+                native_text="corrupted native abstract",
+                ocr_text=thai_ocr,
+                provenance=TextProvenance.OCR,
+            ),
+            PdfPageText(
+                5,
+                english_ocr,
+                native_text="corrupted native English abstract",
+                ocr_text=english_ocr,
+                provenance=TextProvenance.OCR,
+            ),
+        ),
+        warnings=(),
+    )
+
+    selection = prepare_wiki_source(extraction)
+    evidence = collect_wiki_source_evidence(selection.source_text)
+
+    assert thai_ocr in selection.source_text
+    assert english_ocr in selection.source_text
+    assert "corrupted native abstract" not in selection.source_text
+    assert {page.page_number: page.provenance for page in selection.pages} == {
+        1: TextProvenance.PYMUPDF,
+        2: TextProvenance.PYMUPDF,
+        3: TextProvenance.PYMUPDF,
+        4: TextProvenance.OCR,
+        5: TextProvenance.OCR,
+    }
+    assert evidence.keywords == ("โอซีอาร์", "เอกสาร")
 
 
 def test_english_abstract_suggests_previous_thai_page_when_heading_is_damaged() -> None:

@@ -1,14 +1,26 @@
 """Minimal FastAPI entry point and infrastructure checks."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.upload import router as upload_router
 from app.api.wiki import router as wiki_router
-from app.db import get_engine
+from app.db import get_engine, initialize_database_schema
 
-app = FastAPI(title="Special Problem Repository API")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Initialize the development schema once before accepting requests."""
+
+    initialize_database_schema(get_engine())
+    yield
+
+
+app = FastAPI(title="Special Problem Repository API", lifespan=lifespan)
 app.include_router(upload_router)
 app.include_router(wiki_router)
 

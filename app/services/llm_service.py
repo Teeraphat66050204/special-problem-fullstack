@@ -13,6 +13,7 @@ from app.prompts import (
     validate_wiki_markdown,
 )
 from app.services.wiki_output import WikiOutputError, refine_wiki_markdown
+from app.services.wiki_timing import time_wiki_stage
 
 
 class LLMServiceError(RuntimeError):
@@ -65,6 +66,30 @@ class WikiGenerationResult:
     refinement_changes: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class OllamaGenerationResult:
+    """Generated text plus optional native Ollama performance counters."""
+
+    response: str
+    prompt_eval_count: int | None = None
+    prompt_eval_duration: int | None = None
+    eval_count: int | None = None
+    eval_duration: int | None = None
+
+    @property
+    def tokens_per_second(self) -> float | None:
+        if self.eval_count is None or not self.eval_duration:
+            return None
+        return self.eval_count / (self.eval_duration / 1_000_000_000)
+
+
+def _optional_nonnegative_int(body: dict, field: str) -> int | None:
+    value = body.get(field)
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
 class OllamaClient:
     """Own only the provider-specific HTTP request and response parsing."""
 
@@ -72,6 +97,11 @@ class OllamaClient:
         self.settings = settings
 
     def generate(self, prompt: str) -> str:
+        return self.generate_result(prompt).response
+
+    def generate_result(self, prompt: str, *, think: bool | None = None) -> OllamaGenerationResult:
+        """Generate text and retain provider metrics; optionally set native thinking mode."""
+
         url = f"{self.settings.ollama_base_url.rstrip('/')}/api/generate"
         payload = {
             "model": self.settings.ollama_model,
@@ -79,6 +109,8 @@ class OllamaClient:
             "stream": False,
             "options": {"temperature": self.settings.ollama_temperature},
         }
+        if think is not None:
+            payload["think"] = think
 
         try:
             response = httpx.post(
@@ -119,20 +151,29 @@ class OllamaClient:
             raise OllamaRuntimeError("Ollama returned non-text content")
         if not markdown.strip():
             raise EmptyModelResponseError("Ollama returned no generated text")
-        return markdown
+        return OllamaGenerationResult(
+            response=markdown,
+            prompt_eval_count=_optional_nonnegative_int(body, "prompt_eval_count"),
+            prompt_eval_duration=_optional_nonnegative_int(body, "prompt_eval_duration"),
+            eval_count=_optional_nonnegative_int(body, "eval_count"),
+            eval_duration=_optional_nonnegative_int(body, "eval_duration"),
+        )
 
 
 def generate_wiki_result(source_text: str) -> WikiGenerationResult:
     """Generate and finalize Markdown, retaining the raw model reply for reviews."""
 
     prompt = build_wiki_generation_prompt(source_text)
-    raw_markdown = OllamaClient(get_settings()).generate(prompt)
+    with time_wiki_stage("llm_generation"):
+        raw_markdown = OllamaClient(get_settings()).generate(prompt)
     try:
-        refinement = refine_wiki_markdown(source_text, raw_markdown)
+        with time_wiki_stage("output_finalization"):
+            refinement = refine_wiki_markdown(source_text, raw_markdown)
     except WikiOutputError as exc:
         raise InvalidWikiOutputError(str(exc), raw_markdown) from exc
     markdown = refinement.markdown
-    validation = validate_wiki_markdown(markdown)
+    with time_wiki_stage("validation"):
+        validation = validate_wiki_markdown(markdown)
     if not validation.is_valid:
         raise InvalidWikiMarkdownError(validation.issues)
     return WikiGenerationResult(markdown, raw_markdown, refinement.changes)

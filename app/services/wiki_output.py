@@ -7,21 +7,45 @@ import unicodedata
 from dataclasses import dataclass
 
 from app.prompts.wiki_generation import MISSING_INFORMATION_MARKER, REQUIRED_WIKI_HEADINGS
-from app.services.wiki_evidence import WikiSourceEvidence, collect_wiki_source_evidence
+from app.services.wiki_evidence import (
+    WikiSourceEvidence,
+    collect_wiki_source_evidence,
+    find_reliable_repeated_english_title,
+)
 
 _FOCUSED_PAGE = re.compile(r"(?m)^Source page \d+ \([^\n]*\):")
 _HEADING_ALIASES = {
+    "## ภาพรวม": REQUIRED_WIKI_HEADINGS[0],
+    "## ภาพรวมโครงการ": REQUIRED_WIKI_HEADINGS[0],
     "## ผลการศึกษา": REQUIRED_WIKI_HEADINGS[5],
     "## ผลการทดลอง": REQUIRED_WIKI_HEADINGS[5],
+    "## ผลการวิจัย": REQUIRED_WIKI_HEADINGS[5],
+    "## ผลการดำเนินการ": REQUIRED_WIKI_HEADINGS[5],
+    "## ปัญหา": REQUIRED_WIKI_HEADINGS[1],
     "## ที่มาและปัญหา": REQUIRED_WIKI_HEADINGS[1],
     "## เทคโนโลยีและเครื่องมือ": REQUIRED_WIKI_HEADINGS[3],
     "## วิธีการ": REQUIRED_WIKI_HEADINGS[4],
+    "## วิธีการดำเนินการ": REQUIRED_WIKI_HEADINGS[4],
+    "## วิธีการวิจัย": REQUIRED_WIKI_HEADINGS[4],
+    "## วิธีการศึกษา": REQUIRED_WIKI_HEADINGS[4],
+    "## วิธีดำเนินการ": REQUIRED_WIKI_HEADINGS[4],
+    "## วัตถุประสงค์และขอบเขต": REQUIRED_WIKI_HEADINGS[2],
 }
-_KEYWORDS_HEADING = "## คำสำคัญ"
-_KEYWORD_LABEL = re.compile(r"^คำสำคัญ\s*[:：]\s*")
+_SUPPLEMENTAL_HEADINGS = {
+    "## ข้อเสนอแนะ": (REQUIRED_WIKI_HEADINGS[6], "### ข้อเสนอแนะ"),
+}
+_KEYWORD_HEADINGS = frozenset(("## คำสำคัญ", "## คีย์เวิร์ด", "## keywords"))
+_ABSTRACT_HEADINGS = frozenset(("## บทคัดย่อ", "## abstract"))
+_KEYWORD_LABEL = re.compile(r"^(?:คำสำคัญ|คีย์เวิร์ด|keywords?)\s*[:：]\s*", re.IGNORECASE)
 _LIST_PREFIX = re.compile(r"^[-*•]\s+")
 _KEYWORD_OVERVIEW_LINE = re.compile(r"^\s*(?:[-*]\s*)?(?:คำสำคัญ|keywords?)\s*[:：]", re.IGNORECASE)
 _MARKER_WITH_PUNCTUATION = re.compile(rf"^{re.escape(MISSING_INFORMATION_MARKER)}\s*[.:：。]+\s*$")
+_TITLE_METADATA_LABEL = re.compile(
+    r"(?i)(?:ชื่อนักศึกษา|รหัสนักศึกษา|student\s*ids?|studentid|advisor|"
+    r"academic\s+year|degree|department|university|abstract|keywords?)"
+)
+_ENGLISH_TITLE = re.compile(r"^[\x00-\x7f]+$")
+_PDF_LAYOUT_FILLER = re.compile(r"ǰ+")
 _METADATA_BULLET = re.compile(
     r"^\s*[-*]\s*(?:ชื่อโครงงาน|ชื่อโครงการภาษาอังกฤษ|ชื่อนักศึกษา|ชื่อผู้ศึกษา|"
     r"นักศึกษา|รหัสนักศึกษา|ปีการศึกษา|อาจารย์ที่ปรึกษา|ผู้ช่วยอาจารย์ที่ปรึกษา|"
@@ -84,14 +108,28 @@ def _normalize_wiki_structure(
     bodies: dict[str, list[list[str]]] = {heading: [] for heading in REQUIRED_WIKI_HEADINGS}
     unknown: list[tuple[str, list[str]]] = []
     keyword_blocks: list[list[str]] = []
+    abstract_blocks: list[list[str]] = []
+    supplemental_blocks: dict[str, list[list[str]]] = {
+        heading: [] for heading in REQUIRED_WIKI_HEADINGS
+    }
     aliases = 0
     known_order: list[str] = []
     for heading, body in sections:
         stripped_heading = heading.strip()
-        if stripped_heading == _KEYWORDS_HEADING:
+        heading_key = stripped_heading.casefold()
+        if heading_key in _KEYWORD_HEADINGS:
             keyword_blocks.append(_trim_blank_lines(body))
             continue
-        canonical = _HEADING_ALIASES.get(stripped_heading, heading)
+        if heading_key in _ABSTRACT_HEADINGS:
+            abstract_blocks.append(_trim_blank_lines(body))
+            continue
+        supplemental = _SUPPLEMENTAL_HEADINGS.get(stripped_heading)
+        if supplemental:
+            canonical, subheading = supplemental
+            supplemental_blocks[canonical].append([subheading, *_trim_blank_lines(body)])
+            known_order.append(canonical)
+            continue
+        canonical = _HEADING_ALIASES.get(stripped_heading, stripped_heading)
         if canonical != heading:
             aliases += 1
         if canonical in bodies:
@@ -102,6 +140,9 @@ def _normalize_wiki_structure(
 
     moved_keywords = 0
     overview_blocks = bodies[REQUIRED_WIKI_HEADINGS[0]]
+    for block in abstract_blocks:
+        if block and block not in overview_blocks:
+            overview_blocks.append(block)
     for block in keyword_blocks:
         content = [line.strip() for line in block if line.strip()]
         if not content:
@@ -126,11 +167,22 @@ def _normalize_wiki_structure(
             target.extend(keyword_lines)
         moved_keywords += 1
 
-    missing = [heading for heading, blocks in bodies.items() if not blocks]
     duplicates = sum(max(len(blocks) - 1, 0) for blocks in bodies.values())
+    supplemental_count = sum(len(blocks) for blocks in supplemental_blocks.values())
+    for heading, blocks in supplemental_blocks.items():
+        bodies[heading].extend(blocks)
+    missing = [heading for heading, blocks in bodies.items() if not blocks]
     canonical_indices = [REQUIRED_WIKI_HEADINGS.index(heading) for heading in known_order]
     reordered = canonical_indices != sorted(canonical_indices)
-    if not (aliases or keyword_blocks or missing or duplicates or reordered):
+    if not (
+        aliases
+        or keyword_blocks
+        or abstract_blocks
+        or supplemental_count
+        or missing
+        or duplicates
+        or reordered
+    ):
         return lines, (), frozenset()
 
     changes: list[str] = []
@@ -140,6 +192,10 @@ def _normalize_wiki_structure(
         changes.append(f"keyword_sections_removed:{len(keyword_blocks)}")
     if moved_keywords:
         changes.append(f"keyword_sections_moved:{moved_keywords}")
+    if abstract_blocks:
+        changes.append(f"abstract_sections_folded:{len(abstract_blocks)}")
+    if supplemental_count:
+        changes.append(f"supplemental_sections_folded:{supplemental_count}")
     if missing:
         changes.append(f"missing_sections_inserted:{len(missing)}")
     if duplicates:
@@ -171,10 +227,85 @@ def _normalize_wiki_structure(
     return normalized, tuple(changes), frozenset(missing)
 
 
+def _source_comparable(text: str) -> str:
+    normalized = unicodedata.normalize("NFC", _PDF_LAYOUT_FILLER.sub(" ", text)).casefold()
+    return re.sub(r"\s+", "", normalized)
+
+
+def _source_occurrence_count(source_text: str, title: str) -> int:
+    comparable_title = _source_comparable(title)
+    if not comparable_title:
+        return 0
+    return _source_comparable(source_text).count(comparable_title)
+
+
 def _literal_source_match(source_text: str, title: str) -> bool:
-    normalized_source = " ".join(unicodedata.normalize("NFC", source_text).split())
-    normalized_title = " ".join(unicodedata.normalize("NFC", title).split())
-    return bool(normalized_title) and normalized_title in normalized_source
+    return _source_occurrence_count(source_text, title) > 0
+
+
+def _title_is_fragment(title: str) -> bool:
+    value = title.strip().casefold()
+    return value.startswith(("และ", "หรือ", "and ", "or "))
+
+
+def _title_is_long_enough(title: str) -> bool:
+    value = title.strip()
+    if _ENGLISH_TITLE.fullmatch(value):
+        return len(value) >= 16 and len(value.split()) >= 3
+    return len(value) >= 15
+
+
+def _title_quality(source_text: str, title: str) -> tuple[int, int, int, int, int]:
+    occurrences = _source_occurrence_count(source_text, title)
+    complete = not _title_is_fragment(title) and not _TITLE_METADATA_LABEL.search(title)
+    long_enough = _title_is_long_enough(title)
+    return (
+        int(occurrences > 0),
+        int(complete and long_enough),
+        int(occurrences >= 2),
+        occurrences,
+        len(title.strip()),
+    )
+
+
+def _preferred_supported_title(
+    source_text: str, generated_title: str, evidence: WikiSourceEvidence
+) -> str:
+    generated_supported = _literal_source_match(source_text, generated_title)
+    generated_complete = (
+        _title_is_long_enough(generated_title)
+        and not _title_is_fragment(generated_title)
+        and not _TITLE_METADATA_LABEL.search(generated_title)
+    )
+    if generated_supported and generated_complete:
+        return generated_title
+
+    candidates = [generated_title]
+    for candidate in (evidence.title, evidence.title_en):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    supported = [
+        candidate for candidate in candidates if _literal_source_match(source_text, candidate)
+    ]
+    if not supported:
+        return MISSING_INFORMATION_MARKER
+    return max(supported, key=lambda candidate: _title_quality(source_text, candidate))
+
+
+def _reliable_repeated_english_title(source_text: str, evidence: WikiSourceEvidence) -> str | None:
+    title = find_reliable_repeated_english_title(source_text)
+    if (
+        title
+        and evidence.title_en
+        and _source_comparable(title) == _source_comparable(evidence.title_en)
+        and _ENGLISH_TITLE.fullmatch(title)
+        and _title_is_long_enough(title)
+        and not _title_is_fragment(title)
+        and not _TITLE_METADATA_LABEL.search(title)
+        and _source_occurrence_count(source_text, title) >= 2
+    ):
+        return title
+    return None
 
 
 def _canonical_metadata_lines(evidence: WikiSourceEvidence, title: str) -> list[str]:
@@ -218,15 +349,17 @@ def refine_wiki_markdown(source_text: str, markdown: str) -> WikiOutputRefinemen
     title_positions = [index for index, line in enumerate(lines) if line.startswith("# ")]
     if focused and len(title_positions) == 1:
         generated_title = lines[title_positions[0]][2:].strip()
-        preferred_title = evidence.title or (
-            generated_title
-            if _literal_source_match(source_text, generated_title)
-            else MISSING_INFORMATION_MARKER
-        )
+        preferred_title = _preferred_supported_title(source_text, generated_title, evidence)
         preferred_heading = f"# {preferred_title}"
         if lines[title_positions[0]] != preferred_heading:
             lines[title_positions[0]] = preferred_heading
             changes.append("title_copied_from_focused_source")
+    elif focused and not title_positions:
+        recovered_title = _reliable_repeated_english_title(source_text, evidence)
+        if recovered_title:
+            lines[:0] = [f"# {recovered_title}", ""]
+            title_positions = [0]
+            changes.append("title_recovered_from_repeated_english_source")
 
     if focused and REQUIRED_WIKI_HEADINGS[0] in lines and REQUIRED_WIKI_HEADINGS[0] not in inserted:
         overview_start = lines.index(REQUIRED_WIKI_HEADINGS[0]) + 1

@@ -38,6 +38,15 @@ def _section_body(markdown: str, heading: str) -> str:
     return after.split("\n## ", 1)[0].strip()
 
 
+def _assert_canonical_structure(markdown: str) -> None:
+    lines = markdown.splitlines()
+    h1_headings = [line for line in lines if line.startswith("# ")]
+    h2_headings = [line for line in lines if line.startswith("## ")]
+    assert len(h1_headings) == 1
+    assert h2_headings == list(REQUIRED_WIKI_HEADINGS)
+    assert validate_wiki_markdown(markdown).is_valid
+
+
 def test_document_071_alias_and_missing_sections_are_normalized_without_content_loss() -> None:
     raw = _document_071_like_raw()
     assert not validate_wiki_markdown(raw).is_valid
@@ -65,17 +74,52 @@ def test_document_071_alias_and_missing_sections_are_normalized_without_content_
     [
         ("## ผลการศึกษา", "## ผลลัพธ์"),
         ("## ผลการทดลอง", "## ผลลัพธ์"),
+        ("## ปัญหา", "## ปัญหาและที่มา"),
         ("## ที่มาและปัญหา", "## ปัญหาและที่มา"),
         ("## เทคโนโลยีและเครื่องมือ", "## เครื่องมือและเทคโนโลยี"),
         ("## วิธีการ", "## วิธีดำเนินงาน"),
+        ("## วิธีการศึกษา", "## วิธีดำเนินงาน"),
+        ("## วัตถุประสงค์และขอบเขต", "## วัตถุประสงค์"),
+        ("## ภาพรวม", "## ภาพรวมโครงงาน"),
+        ("## ภาพรวมโครงการ", "## ภาพรวมโครงงาน"),
     ],
 )
 def test_only_known_heading_aliases_are_mapped(alias: str, canonical: str) -> None:
     raw = _markdown("Project", "ข้อมูลจากต้นฉบับ").replace(canonical, alias, 1)
     result = refine_wiki_markdown("Generic source", raw)
-    assert alias not in result.markdown
+    assert alias not in result.markdown.splitlines()
     assert canonical in result.markdown
+    assert _section_body(result.markdown, canonical) == "ข้อมูลจากต้นฉบับ"
     assert validate_wiki_markdown(result.markdown).is_valid
+
+
+def test_canonical_h2_headings_ignore_surrounding_whitespace() -> None:
+    raw = _markdown("Project", "เนื้อหาจากต้นฉบับ")
+    for heading in REQUIRED_WIKI_HEADINGS:
+        raw = raw.replace(heading, f"{heading}  ", 1)
+
+    result = refine_wiki_markdown("Generic source", raw)
+
+    _assert_canonical_structure(result.markdown)
+    for heading in REQUIRED_WIKI_HEADINGS:
+        assert _section_body(result.markdown, heading) == "เนื้อหาจากต้นฉบับ"
+
+
+def test_recommendations_are_preserved_as_summary_subheading() -> None:
+    recommendation = "เก็บข้อความข้อเสนอแนะเดิมทุกประการ"
+    raw = _markdown("Project") + f"\n\n## ข้อเสนอแนะ\n{recommendation}"
+
+    result = refine_wiki_markdown("Generic source", raw)
+
+    _assert_canonical_structure(result.markdown)
+    assert _section_body(result.markdown, "## สรุป") == (f"### ข้อเสนอแนะ\n{recommendation}")
+    assert result.markdown.count(MISSING_INFORMATION_MARKER) == 6
+    assert all(
+        line == MISSING_INFORMATION_MARKER
+        for line in result.markdown.splitlines()
+        if MISSING_INFORMATION_MARKER in line
+    )
+    assert "supplemental_sections_folded:1" in result.changes
 
 
 def test_duplicate_canonical_and_alias_sections_merge_distinct_content() -> None:
@@ -107,6 +151,149 @@ def test_unknown_heading_remains_for_strict_validator_and_keeps_content() -> Non
     raw = _markdown("Project") + "\n\n## หัวข้อที่ไม่รู้จัก\nข้อมูลที่ต้องไม่หาย"
     result = refine_wiki_markdown("Generic source", raw)
     assert "## หัวข้อที่ไม่รู้จัก\nข้อมูลที่ต้องไม่หาย" in result.markdown
+    assert not validate_wiki_markdown(result.markdown).is_valid
+
+
+def test_ambiguous_importance_heading_remains_rejected() -> None:
+    raw = _markdown("Project") + "\n\n## ค่าความสำคัญ\nข้อความที่ไม่มีปลายทางชัดเจน"
+
+    result = refine_wiki_markdown("Generic source", raw)
+
+    assert "## ค่าความสำคัญ" in result.markdown
+    assert not validate_wiki_markdown(result.markdown).is_valid
+
+
+@pytest.mark.parametrize(
+    ("alias", "canonical"),
+    [
+        ("## วิธีการดำเนินการ", "## วิธีดำเนินงาน"),
+        ("## วิธีการวิจัย", "## วิธีดำเนินงาน"),
+        ("## วิธีดำเนินการ", "## วิธีดำเนินงาน"),
+        ("## ผลการวิจัย", "## ผลลัพธ์"),
+        ("## ผลการดำเนินการ", "## ผลลัพธ์"),
+    ],
+)
+def test_report_style_method_and_result_aliases_are_folded(alias: str, canonical: str) -> None:
+    raw = _markdown("Project", "ข้อมูลจากต้นฉบับ").replace(canonical, alias, 1)
+
+    result = refine_wiki_markdown("Generic source", raw)
+
+    assert alias not in result.markdown
+    assert _section_body(result.markdown, canonical) == "ข้อมูลจากต้นฉบับ"
+    assert validate_wiki_markdown(result.markdown).is_valid
+
+
+def test_abstract_heading_is_folded_into_overview_without_losing_content() -> None:
+    raw = _markdown("Project").replace(
+        f"## ภาพรวมโครงงาน\n{MISSING_INFORMATION_MARKER}",
+        "## บทคัดย่อ\nใจความจากบทคัดย่อ",
+        1,
+    )
+
+    result = refine_wiki_markdown("Generic source", raw)
+
+    assert "## บทคัดย่อ" not in result.markdown
+    assert _section_body(result.markdown, "## ภาพรวมโครงงาน") == "ใจความจากบทคัดย่อ"
+    assert "abstract_sections_folded:1" in result.changes
+    assert validate_wiki_markdown(result.markdown).is_valid
+
+
+@pytest.mark.parametrize("heading", ["## คำสำคัญ", "## คีย์เวิร์ด", "## Keywords"])
+def test_keyword_heading_aliases_move_to_overview(heading: str) -> None:
+    raw = _markdown("Project", "ข้อมูลจากต้นฉบับ").replace(
+        "## ปัญหาและที่มา",
+        f"{heading}\nbiology, rice\n\n## ปัญหาและที่มา",
+        1,
+    )
+
+    result = refine_wiki_markdown("Generic source", raw)
+
+    assert heading not in result.markdown
+    assert "คำสำคัญ: biology, rice" in _section_body(result.markdown, "## ภาพรวมโครงงาน")
+    assert validate_wiki_markdown(result.markdown).is_valid
+
+
+def test_complete_source_supported_model_title_beats_fragmentary_evidence_title() -> None:
+    complete = "Species identification of Crotalaria sp. and evaluation of phytochemical"
+    source = (
+        "Source page 1 (title page):\nการบ่งชี้สายพันธุ์ของ Crotalaria sp.\n"
+        "และการประเมินพฤกษเคมี\n\n"
+        f"{complete}\n\nSource page 2 (title page):\n{complete}"
+    )
+
+    result = refine_wiki_markdown(source, _markdown(complete))
+
+    assert result.markdown.startswith(f"# {complete}\n")
+    assert "title_copied_from_focused_source" not in result.changes
+    assert validate_wiki_markdown(result.markdown).is_valid
+
+
+def test_missing_h1_is_recovered_from_one_repeated_reliable_english_title() -> None:
+    title = (
+        "Effect of extracellular substance of lactic acid bacteria on growth and biofilm "
+        "formation of Streptococcus mutans and Streptococcus sobrinus"
+    )
+    source = (
+        "Source page 1 (title page):\n"
+        "Effect of extracellular substance of lactic acid bacteria on growth and biofilm\n"
+        "formation of Streptococcus mutans and Streptococcus sobrinus\n\n"
+        "Source page 2 (title page):\n"
+        "Effect of extracellular substance of lactic acid bacteria on growth and biofilm\n"
+        "formation of Streptococcus mutans and Streptococcus sobrinus"
+    )
+    raw = "\n\n".join(f"{heading}\nข้อมูลจากต้นฉบับ" for heading in REQUIRED_WIKI_HEADINGS)
+
+    result = refine_wiki_markdown(source, raw)
+
+    assert result.markdown.startswith(f"# {title}\n")
+    assert "title_recovered_from_repeated_english_source" in result.changes
+    assert validate_wiki_markdown(result.markdown).is_valid
+
+
+def test_repeated_english_title_recovery_ignores_capitalization() -> None:
+    recovered = "ACTINOMYCETE INHIBITION AND RICE GROWTH PROMOTION"
+    labeled = "Actinomycete Inhibition and Rice Growth Promotion"
+    source = "\n\n".join(
+        (
+            f"Source page 1 (title page):\n{recovered}",
+            f"Source page 2 (title page):\n{recovered}",
+            f"Source page 3 (project metadata):\nTitle: {labeled}",
+        )
+    )
+    raw = "\n\n".join(
+        f"{heading}\n{MISSING_INFORMATION_MARKER}" for heading in REQUIRED_WIKI_HEADINGS
+    )
+
+    result = refine_wiki_markdown(source, raw)
+
+    assert result.markdown.startswith(f"# {recovered}\n")
+    _assert_canonical_structure(result.markdown)
+    assert result.markdown.count(MISSING_INFORMATION_MARKER) == len(REQUIRED_WIKI_HEADINGS) - 1
+    assert all(
+        line == MISSING_INFORMATION_MARKER
+        for line in result.markdown.splitlines()
+        if MISSING_INFORMATION_MARKER in line
+    )
+    assert "title_recovered_from_repeated_english_source" in result.changes
+
+
+def test_missing_h1_is_not_recovered_when_repeated_english_titles_conflict() -> None:
+    first = "Mobile Robot Localization and Navigation using LIDAR"
+    second = "Actinomycete Inhibition and Rice Growth Promotion"
+    source = "\n\n".join(
+        (
+            f"Source page 1 (title page):\n{first}",
+            f"Source page 2 (title page):\n{first}",
+            f"Source page 3 (title page):\n{second}",
+            f"Source page 4 (title page):\n{second}",
+        )
+    )
+    raw = "\n\n".join(f"{heading}\nข้อมูลจากต้นฉบับ" for heading in REQUIRED_WIKI_HEADINGS)
+
+    result = refine_wiki_markdown(source, raw)
+
+    assert not any(line.startswith("# ") for line in result.markdown.splitlines())
+    assert "title_recovered_from_repeated_english_source" not in result.changes
     assert not validate_wiki_markdown(result.markdown).is_valid
 
 

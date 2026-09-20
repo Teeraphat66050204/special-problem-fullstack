@@ -79,6 +79,36 @@ def test_generate_wiki_calls_the_existing_prompt_builder(settings, monkeypatch) 
     assert called_with == [source_text]
 
 
+def test_detailed_generation_can_disable_thinking_and_retains_metrics(
+    settings, monkeypatch
+) -> None:
+    captured: dict = {}
+
+    def post(url: str, *, json: dict, timeout: float) -> httpx.Response:
+        del url, timeout
+        captured.update(json)
+        return fake_response(
+            body={
+                "response": valid_thai_markdown(),
+                "prompt_eval_count": 100,
+                "prompt_eval_duration": 2_000_000_000,
+                "eval_count": 50,
+                "eval_duration": 4_000_000_000,
+            }
+        )
+
+    monkeypatch.setattr(llm_service.httpx, "post", post)
+
+    result = llm_service.OllamaClient(settings).generate_result("prompt", think=False)
+
+    assert captured["think"] is False
+    assert result.prompt_eval_count == 100
+    assert result.prompt_eval_duration == 2_000_000_000
+    assert result.eval_count == 50
+    assert result.eval_duration == 4_000_000_000
+    assert result.tokens_per_second == 12.5
+
+
 def test_ollama_timeout_is_mapped(settings, monkeypatch) -> None:
     def timeout(*args, **kwargs):
         del args, kwargs

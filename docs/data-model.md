@@ -16,6 +16,7 @@ later Gantt tasks.
 | metadata         |                 | markdown_content |
 | storage_key      |                 | version / status |
 | raw_text         |                 +--------+---------+
+| extraction_data  |                          |
 | extraction_status|                          |
 +--------+---------+                          | 1:N
          |                                    |
@@ -41,7 +42,9 @@ refer to the same document.
 
 Stores source identity and metadata (`original_filename`, title, author,
 student ID, academic year, and unique storage key), extracted `raw_text`, page
-count, extraction lifecycle status, and timestamps.
+count, versioned page/warning JSON in `extraction_data` (including native/OCR text
+and per-page `pymupdf`, `ocr`, or `mixed` provenance), extraction lifecycle
+status, and timestamps.
 
 ### WikiPage
 
@@ -65,6 +68,7 @@ without introducing embedding or vector fields during Task 1.1.
 - Source pages are at least 1 when present; token counts are non-negative when
   present; trimmed chunk content cannot be empty.
 - Publication status and `is_published` must agree.
+- A completed Document must have both raw text and page-aware extraction data.
 - ORM and database cascades remove dependent Wiki pages and chunks when their
   owning parent is deleted.
 - Status enums are stored as portable validated strings. Timestamp columns are
