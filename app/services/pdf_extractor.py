@@ -52,6 +52,16 @@ class WarningCode(StrEnum):
 
     PAGE_HAS_NO_TEXT = "page_has_no_text"
     DOCUMENT_HAS_NO_TEXT = "document_has_no_text"
+    OCR_CONFIGURATION = "ocr_configuration"
+    OCR_FAILED = "ocr_failed"
+
+
+class TextProvenance(StrEnum):
+    """Origin of the selected text retained for one PDF page."""
+
+    PYMUPDF = "pymupdf"
+    OCR = "ocr"
+    MIXED = "mixed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +70,9 @@ class PdfPageText:
 
     page_number: int
     text: str
+    native_text: str | None = None
+    ocr_text: str | None = None
+    provenance: TextProvenance = TextProvenance.PYMUPDF
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,7 +190,7 @@ def extract_pdf(source: PdfInput) -> PdfExtractionResult:
                     PdfExtractionWarning(
                         code=WarningCode.PAGE_HAS_NO_TEXT,
                         page_number=page_number,
-                        message=f"Page {page_number} has no usable text layer.",
+                        message=f"Page {page_number} has no usable native PDF text layer.",
                     )
                 )
 
@@ -186,7 +199,7 @@ def extract_pdf(source: PdfInput) -> PdfExtractionResult:
             warnings.append(
                 PdfExtractionWarning(
                     code=WarningCode.DOCUMENT_HAS_NO_TEXT,
-                    message="The PDF has no usable text layer on any page; OCR was not attempted.",
+                    message="The PDF has no usable native text layer on any page.",
                 )
             )
 

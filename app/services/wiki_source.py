@@ -5,11 +5,22 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from app.services.pdf_extractor import PdfExtractionResult, PdfPageText
+from app.services.pdf_extractor import PdfExtractionResult, PdfPageText, TextProvenance
 
-_THAI_ABSTRACT = re.compile(r"(?m)^[ \t]*บท[ \t]*คัด[ \t]*ย่อ[ \t]*$")
-_ENGLISH_ABSTRACT = re.compile(r"(?im)^[ \t]*abstract[ \t]*$")
-_KEYWORDS = re.compile(r"(?im)^[ \t]*(?:คำ[ \t]*สำ[ \t]*คัญ|keywords?\b)[ \t]*[:：]?")
+_MARKDOWN_HEADING = r"(?:#{1,6}[ \t]+)?"
+_MARKDOWN_EMPHASIS = r"(?:\*{1,2}|_{1,2})?"
+_THAI_ABSTRACT = re.compile(
+    rf"(?m)^[ \t]*{_MARKDOWN_HEADING}{_MARKDOWN_EMPHASIS}"
+    rf"บท[ \t]*คัด[ \t]*ย่อ{_MARKDOWN_EMPHASIS}[ \t]*$"
+)
+_ENGLISH_ABSTRACT = re.compile(
+    rf"(?im)^[ \t]*{_MARKDOWN_HEADING}{_MARKDOWN_EMPHASIS}"
+    rf"abstract{_MARKDOWN_EMPHASIS}[ \t]*$"
+)
+_KEYWORDS = re.compile(
+    rf"(?im)^[ \t]*{_MARKDOWN_HEADING}{_MARKDOWN_EMPHASIS}"
+    rf"(?:คำ[ \t]*สำ[ \t]*คัญ|keywords?\b){_MARKDOWN_EMPHASIS}[ \t]*[:：]?"
+)
 _METADATA_MARKERS = (
     "ชื่อนักศึกษา",
     "อาจารย์ที่ปรึกษา",
@@ -43,11 +54,27 @@ class WikiSourcePolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class WikiSourcePage:
+    """One selected final page text with its extraction provenance."""
+
+    page_number: int
+    role: str
+    text: str
+    provenance: TextProvenance
+
+
+@dataclass(frozen=True, slots=True)
 class WikiSourceSelection:
-    """Prompt-ready text and source-page provenance."""
+    """Prompt-ready text plus provenance-bearing selected pages."""
 
     source_text: str
-    selected_pages: tuple[int, ...]
+    pages: tuple[WikiSourcePage, ...]
+
+    @property
+    def selected_pages(self) -> tuple[int, ...]:
+        """Return the stable one-based page numbers used in the source."""
+
+        return tuple(page.page_number for page in self.pages)
 
 
 def _keyword_section(text: str) -> str | None:
@@ -104,11 +131,16 @@ def prepare_wiki_source(
     if not pages:
         raise ValueError("No usable front-matter text was extracted for Wiki generation")
 
-    selected: dict[int, tuple[str, str]] = {}
+    selected: dict[int, WikiSourcePage] = {}
 
     def add_page(page: PdfPageText | None, role: str, text: str | None = None) -> None:
         if page is not None and page.page_number not in selected:
-            selected[page.page_number] = (role, text if text is not None else page.text)
+            selected[page.page_number] = WikiSourcePage(
+                page_number=page.page_number,
+                role=role,
+                text=text if text is not None else page.text,
+                provenance=page.provenance,
+            )
 
     for page_number in range(1, policy.title_page_count + 1):
         add_page(pages.get(page_number), "title page")
@@ -162,9 +194,9 @@ def prepare_wiki_source(
 
     retained_numbers = set(list(selected)[: policy.max_source_pages])
     selected_pages = tuple(sorted(retained_numbers))
+    source_pages = tuple(selected[page_number] for page_number in selected_pages)
     source_text = "\n\n".join(
-        f"Source page {page_number} ({selected[page_number][0]}):\n"
-        f"{selected[page_number][1].strip()}"
-        for page_number in selected_pages
+        f"Source page {page.page_number} ({page.role}):\n{page.text.strip()}"
+        for page in source_pages
     )
-    return WikiSourceSelection(source_text=source_text, selected_pages=selected_pages)
+    return WikiSourceSelection(source_text=source_text, pages=source_pages)

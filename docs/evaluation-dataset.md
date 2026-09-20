@@ -66,6 +66,6 @@ can be refined without changing the full-document extractor.
 Wiki generation should pass this focused `source_text` to the existing Task 2.2
 LLM service. It should not pass `PdfExtractionResult.full_text` or a dataset
 record's `raw_text` by default. The GroundTruth records are evaluation references
-and are not automatically fed to the generator. The current upload response
-still returns full extraction results; PDF-to-Wiki orchestration remains a later
-task.
+and are not automatically fed to the generator. The upload route persists the
+full extraction and returns a `document_id`; the Wiki route reloads that
+page-aware extraction before applying the same focused-source policy.

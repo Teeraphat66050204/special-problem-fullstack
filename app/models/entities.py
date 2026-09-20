@@ -71,6 +71,11 @@ class Document(SQLModel, table=True):
     __table_args__ = (
         CheckConstraint("length(trim(original_filename)) > 0", name="ck_document_filename"),
         CheckConstraint("page_count >= 0", name="ck_document_page_count"),
+        CheckConstraint(
+            "extraction_status != 'completed' OR "
+            "(raw_text IS NOT NULL AND extraction_data IS NOT NULL)",
+            name="ck_document_completed_extraction_data",
+        ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -81,6 +86,7 @@ class Document(SQLModel, table=True):
     academic_year: int | None = Field(default=None, index=True)
     storage_key: str = Field(max_length=1024, unique=True)
     raw_text: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    extraction_data: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     page_count: int = Field(default=0, sa_column=Column(Integer, nullable=False))
     extraction_status: ExtractionStatus = Field(
         default=ExtractionStatus.PENDING,
