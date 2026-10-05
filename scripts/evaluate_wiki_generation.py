@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.datasets.groundtruth import DatasetEntry, load_dataset_index, load_groundtruth
 from app.evaluation.wiki_generation import aggregate_results, evaluate_markdown
 from app.prompts import WIKI_GENERATION_INSTRUCTIONS
+from app.services.legacy_wiki_source import prepare_wiki_source
 from app.services.llm_service import (
     InvalidWikiMarkdownError,
     InvalidWikiOutputError,
@@ -21,10 +22,11 @@ from app.services.llm_service import (
     OllamaModelNotFoundError,
     OllamaTimeoutError,
     OllamaUnavailableError,
-    generate_wiki_result,
+)
+from app.services.llm_service import (
+    generate_legacy_wiki_result as generate_wiki_result,
 )
 from app.services.pdf_extractor import PdfExtractionError, extract_pdf
-from app.services.wiki_source import prepare_wiki_source
 
 
 def _failure(result: dict[str, Any], category: str, error: Exception | str) -> dict[str, Any]:

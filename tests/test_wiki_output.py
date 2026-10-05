@@ -358,7 +358,7 @@ def test_llm_service_finalizes_document_071_structure_before_strict_validation(
     raw = _document_071_like_raw()
     monkeypatch.setattr(llm_service.OllamaClient, "generate", lambda self, prompt: raw)
 
-    result = llm_service.generate_wiki_result("Generic source text")
+    result = llm_service.generate_legacy_wiki_result("Generic source text")
 
     assert result.raw_markdown == raw
     assert validate_wiki_markdown(result.markdown).is_valid
@@ -457,7 +457,7 @@ def test_llm_service_maps_unsafe_marker_content(monkeypatch: pytest.MonkeyPatch)
         ),
     )
     with pytest.raises(llm_service.InvalidWikiOutputError, match="extra same-line content"):
-        llm_service.generate_wiki("Generic source text")
+        llm_service.generate_legacy_wiki_result("Generic source text")
 
 
 def test_llm_result_keeps_raw_model_reply_and_refinement_changes(
@@ -466,7 +466,7 @@ def test_llm_result_keeps_raw_model_reply_and_refinement_changes(
     raw = _markdown("ชื่อที่แต่งขึ้น", f"{MISSING_INFORMATION_MARKER}.")
     monkeypatch.setattr(llm_service.OllamaClient, "generate", lambda self, prompt: raw)
 
-    result = llm_service.generate_wiki_result(_source())
+    result = llm_service.generate_legacy_wiki_result(_source())
 
     assert result.raw_markdown == raw
     assert result.markdown.startswith(

@@ -1,6 +1,7 @@
 """Persist page-aware extraction from a temporary digital-PDF upload."""
 
 import logging
+from dataclasses import asdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated
@@ -14,6 +15,7 @@ from sqlmodel import Session
 from app.config import get_settings
 from app.db import get_session
 from app.models import Document, ExtractionStatus
+from app.services.chapter_ocr import recover_chapter_one
 from app.services.document_extraction import serialize_extraction
 from app.services.ocr_service import (
     OcrServiceError,
@@ -97,6 +99,9 @@ def extract_uploaded_pdf(file: UploadFile) -> PdfExtractionResult:
                     )
                 except OcrServiceError as error:
                     result = add_ocr_failure_warning(native_result, error)
+                chapter_result = recover_chapter_one(saved_pdf, result, settings)
+                result = chapter_result.extraction
+                logger.info("wiki.upload chapter_detection=%s", asdict(chapter_result.diagnostics))
                 for warning in result.warnings[len(native_result.warnings) :]:
                     if warning.code not in {
                         WarningCode.OCR_CONFIGURATION,

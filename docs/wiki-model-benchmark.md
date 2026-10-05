@@ -1,5 +1,10 @@
 # Wiki model benchmark
 
+> Historical seven-section Wiki contract. Production generation now returns a
+> [Thai abstract draft](abstract-generation.md). Legacy evaluation/benchmark code
+> explicitly retains the old selector and contract. Existing results remain
+> unchanged; a new abstract benchmark must be run separately in the future.
+
 The benchmark runs every pair listed in `data/index.json` through the existing
 PDF extractor, focused source selector, evidence extractor, Wiki prompt builder,
 source-backed output finalizer, and strict validator. Each PDF is prepared once,

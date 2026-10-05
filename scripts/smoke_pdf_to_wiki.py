@@ -6,7 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from app.prompts import WikiStructureIssue, validate_wiki_markdown
+from app.prompts import WikiStructureIssue
+from app.prompts.abstract_generation import validate_abstract
 from app.services.llm_service import (
     InvalidWikiMarkdownError,
     LLMServiceError,
@@ -67,22 +68,24 @@ def run(pdf_path: Path) -> int:
         print(f"Wiki generation failed: {exc}", file=sys.stderr)
         return 1
 
-    print("Generated Wiki Markdown:")
+    print("Generated Thai abstract:")
     print(markdown)
     print()
 
-    validation = validate_wiki_markdown(markdown)
+    validation = validate_abstract(markdown)
     if not validation.is_valid:
-        print("Invalid Wiki Markdown:", file=sys.stderr)
-        _print_validation_issues(validation.issues)
+        print("Invalid abstract:", file=sys.stderr)
+        print(", ".join(validation.issues), file=sys.stderr)
         return 1
 
-    print("Wiki Markdown structure: valid")
+    print("Abstract structure: valid")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Generate Wiki Markdown from a focused PDF source")
+    parser = argparse.ArgumentParser(
+        description="Generate a Thai abstract from document-wide focused PDF source"
+    )
     parser.add_argument("pdf", type=Path, help="Path to a digital PDF")
     arguments = parser.parse_args(argv)
     return run(arguments.pdf)

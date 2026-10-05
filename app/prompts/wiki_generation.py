@@ -1,4 +1,7 @@
-"""Prompt and output contract for source-grounded Wiki generation."""
+"""Legacy seven-section benchmark prompt and human-reviewed publication contract.
+
+Production generation uses app.prompts.abstract_generation.
+"""
 
 from __future__ import annotations
 

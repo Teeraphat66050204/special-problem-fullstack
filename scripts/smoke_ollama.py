@@ -1,4 +1,4 @@
-"""Manually run the standalone Wiki service against a local Ollama instance."""
+"""Manually generate a Thai abstract against the configured Ollama instance."""
 
 import argparse
 import sys
@@ -8,7 +8,7 @@ from app.services.llm_service import LLMServiceError, generate_wiki
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate Wiki Markdown from a UTF-8 text file")
+    parser = argparse.ArgumentParser(description="Generate a Thai abstract from focused UTF-8 text")
     parser.add_argument("source", type=Path, help="File containing extracted document text")
     arguments = parser.parse_args()
 

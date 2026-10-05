@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.prompts import REQUIRED_WIKI_HEADINGS, validate_wiki_markdown
+from app.prompts import validate_wiki_markdown
 from app.services import llm_service
 from app.services.llm_service import (
     InvalidWikiMarkdownError,
@@ -30,8 +30,7 @@ def _extraction() -> PdfExtractionResult:
 
 
 def _valid_markdown() -> str:
-    sections = "\n\n".join(f"{heading}\nข้อมูลจากเอกสาร" for heading in REQUIRED_WIKI_HEADINGS)
-    return f"# ระบบค้นคืนข้อมูล\n\n{sections}"
+    return "โครงงานนี้พัฒนาระบบค้นคืนข้อมูลภาษาไทยเพื่อสนับสนุนการค้นหาเอกสาร"
 
 
 @pytest.fixture
@@ -63,7 +62,7 @@ def test_smoke_passes_only_focused_source_to_generation(
     assert "เนื้อหาทั้งเล่ม" not in received[0]
     assert received[0] in output
     assert _valid_markdown() in output
-    assert "Wiki Markdown structure: valid" in output
+    assert "Abstract structure: valid" in output
 
 
 def test_missing_pdf_is_reported(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -97,7 +96,9 @@ def test_no_suitable_wiki_source_is_reported(
         ),
     )
     assert smoke_pdf_to_wiki.run(pdf_path) == 1
-    assert "No suitable Wiki source: No usable front-matter text" in capsys.readouterr().err
+    assert (
+        "No suitable Wiki source: No usable abstract or real Chapter 1" in capsys.readouterr().err
+    )
 
 
 @pytest.mark.parametrize(
@@ -143,8 +144,8 @@ def test_explicit_markdown_validation_rejects_invalid_output(
     monkeypatch.setattr(smoke_pdf_to_wiki, "generate_wiki", lambda text: "# Title only")
     assert smoke_pdf_to_wiki.run(pdf_path) == 1
     output = capsys.readouterr()
-    assert "Generated Wiki Markdown:\n# Title only" in output.out
-    assert "Invalid Wiki Markdown:" in output.err
+    assert "Generated Thai abstract:\n# Title only" in output.out
+    assert "Invalid abstract:" in output.err
 
 
 def test_smoke_uses_shared_finalizer_for_document_071_heading_failure(
@@ -161,15 +162,5 @@ def test_smoke_uses_shared_finalizer_for_document_071_heading_failure(
     )
     monkeypatch.setattr(llm_service.OllamaClient, "generate", lambda self, prompt: raw)
 
-    assert smoke_pdf_to_wiki.run(pdf_path) == 0
-
-    output = capsys.readouterr().out
-    assert "Wiki Markdown structure: valid" in output
-    assert "## ผลลัพธ์" in output
-    assert "## ผลการศึกษา" not in output
-    assert "## วิธีการ" not in output
-    assert "## คำสำคัญ" not in output
-    assert "## วิธีดำเนินงาน" in output
-    assert "คำสำคัญ: ค้นคืนข้อมูล" in output
-    assert "ภาษาไทย, ระบบสารสนเทศ" not in output
-    assert "ผลจากเอกสาร" in output
+    assert smoke_pdf_to_wiki.run(pdf_path) == 1
+    assert "Generated abstract is invalid" in capsys.readouterr().err

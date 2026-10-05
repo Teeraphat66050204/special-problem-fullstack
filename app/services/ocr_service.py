@@ -71,7 +71,7 @@ def _restore_source_position(source: PdfInput, original_position: int | None) ->
             source.seek(original_position)
 
 
-def _run_provider(
+def run_ocr_pages(
     provider: OcrProvider,
     source: PdfInput,
     page_numbers: Sequence[int],
@@ -86,11 +86,15 @@ def _run_provider(
     except OcrServiceError:
         raise
     except Exception as exc:
-        raise OcrServiceError("OCR provider failed for selected front-matter pages") from exc
+        raise OcrServiceError("OCR provider failed for selected pages") from exc
     finally:
         _restore_source_position(source, original_position)
     if not isinstance(result, Mapping):
         raise OcrServiceError("OCR provider returned an invalid page mapping")
+    if set(result) - set(page_numbers):
+        raise OcrServiceError("OCR provider returned unrequested page numbers")
+    if any(not isinstance(value, str) for value in result.values()):
+        raise OcrServiceError("OCR provider returned non-text page content")
     return result
 
 
@@ -190,12 +194,7 @@ def apply_ocr_fallback(
 
     requested_pages = quality.degraded_page_numbers
     try:
-        ocr_pages = _run_provider(provider, source, requested_pages)
-        unexpected = set(ocr_pages) - set(requested_pages)
-        if unexpected:
-            raise OcrServiceError("OCR provider returned unrequested page numbers")
-        if any(not isinstance(value, str) for value in ocr_pages.values()):
-            raise OcrServiceError("OCR provider returned non-text page content")
+        ocr_pages = run_ocr_pages(provider, source, requested_pages)
     except OcrServiceError as error:
         return add_ocr_failure_warning(extraction, error)
 

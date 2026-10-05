@@ -12,6 +12,11 @@ from app.prompts import (
     build_wiki_generation_prompt,
     validate_wiki_markdown,
 )
+from app.prompts.abstract_generation import (
+    build_abstract_generation_prompt,
+    normalize_abstract,
+    validate_abstract,
+)
 from app.services.wiki_output import WikiOutputError, refine_wiki_markdown
 from app.services.wiki_timing import time_wiki_stage
 
@@ -55,6 +60,22 @@ class InvalidWikiOutputError(LLMServiceError):
     def __init__(self, message: str, raw_markdown: str) -> None:
         self.raw_markdown = raw_markdown
         super().__init__(message)
+
+
+class InvalidAbstractError(LLMServiceError):
+    """The model reply violates the production abstract contract."""
+
+    def __init__(self, issues: tuple[str, ...], raw_text: str) -> None:
+        self.issues = issues
+        self.raw_text = raw_text
+        super().__init__(f"Generated abstract is invalid: {', '.join(issues)}")
+
+
+@dataclass(frozen=True, slots=True)
+class AbstractGenerationResult:
+    abstract: str
+    raw_text: str
+    cleanup_changes: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,8 +181,8 @@ class OllamaClient:
         )
 
 
-def generate_wiki_result(source_text: str) -> WikiGenerationResult:
-    """Generate and finalize Markdown, retaining the raw model reply for reviews."""
+def generate_legacy_wiki_result(source_text: str) -> WikiGenerationResult:
+    """Legacy seven-section evaluation only; never used for production generation."""
 
     prompt = build_wiki_generation_prompt(source_text)
     with time_wiki_stage("llm_generation"):
@@ -179,7 +200,32 @@ def generate_wiki_result(source_text: str) -> WikiGenerationResult:
     return WikiGenerationResult(markdown, raw_markdown, refinement.changes)
 
 
-def generate_wiki(source_text: str) -> str:
-    """Return source-backed Markdown through the existing service interface."""
+def generate_abstract_result(source_text: str) -> AbstractGenerationResult:
+    """Generate and validate a paragraph without the legacy Wiki finalizer."""
+    prompt = build_abstract_generation_prompt(source_text)
+    with time_wiki_stage("llm_generation"):
+        raw_text = OllamaClient(get_settings()).generate(prompt)
+    with time_wiki_stage("output_finalization"):
+        abstract = normalize_abstract(raw_text)
+    with time_wiki_stage("validation"):
+        validation = validate_abstract(abstract)
+    if not validation.is_valid:
+        raise InvalidAbstractError(validation.issues, raw_text)
+    changes = ("boundary_whitespace_or_abstract_label_removed",) if abstract != raw_text else ()
+    return AbstractGenerationResult(abstract, raw_text, changes)
 
-    return generate_wiki_result(source_text).markdown
+
+def generate_abstract(source_text: str) -> str:
+    return generate_abstract_result(source_text).abstract
+
+
+def generate_wiki_result(source_text: str) -> WikiGenerationResult:
+    """Compatibility wrapper: markdown fields now contain a plain-text abstract."""
+    result = generate_abstract_result(source_text)
+    return WikiGenerationResult(result.abstract, result.raw_text, result.cleanup_changes)
+
+
+def generate_wiki(source_text: str) -> str:
+    """Compatibility name for production abstract generation."""
+
+    return generate_abstract(source_text)

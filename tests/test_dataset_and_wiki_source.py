@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 from app.datasets.groundtruth import load_dataset_index, load_groundtruth
+from app.services.legacy_wiki_source import WikiSourcePolicy, prepare_wiki_source
 from app.services.pdf_extractor import PdfExtractionResult, PdfPageText, TextProvenance
 from app.services.wiki_evidence import collect_wiki_source_evidence
-from app.services.wiki_source import WikiSourcePolicy, prepare_wiki_source
 
 DATA_ROOT = Path(__file__).resolve().parents[1] / "data"
 

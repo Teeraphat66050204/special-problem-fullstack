@@ -1,5 +1,10 @@
 # Task 2.3 local Wiki generation evaluation
 
+> Historical seven-section Wiki contract. Production generation now returns a
+> [Thai abstract draft](abstract-generation.md). Legacy evaluation/benchmark code
+> explicitly retains the old selector and contract. Existing results remain
+> unchanged; a new abstract benchmark must be run separately in the future.
+
 Run the batch evaluator from the repository root after restoring the ignored
 sample PDFs and starting Ollama with the configured model:
 

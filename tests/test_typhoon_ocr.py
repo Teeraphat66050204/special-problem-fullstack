@@ -166,11 +166,23 @@ def test_missing_typhoon_key_warns_only_when_degraded_text_needs_ocr() -> None:
     assert "TYPHOON_API_KEY" in result.warnings[-1].message
 
 
-def test_typhoon_provider_rejects_pages_after_six_without_api_call() -> None:
+def test_typhoon_provider_rejects_more_than_six_requests_without_api_call() -> None:
     def unexpected_request(request: httpx.Request) -> httpx.Response:
         pytest.fail(f"Out-of-scope OCR request was sent: {request.url}")
 
     provider = _provider(httpx.MockTransport(unexpected_request))
 
-    with pytest.raises(OcrServiceError, match="between 1 and 6"):
-        provider.extract_pages(BytesIO(_pdf_bytes(page_count=7)), (7,))
+    with pytest.raises(OcrServiceError, match="at most 6"):
+        provider.extract_pages(BytesIO(_pdf_bytes(page_count=7)), tuple(range(1, 8)))
+
+
+def test_typhoon_can_render_one_targeted_late_page():
+    calls = []
+
+    def success(request):
+        calls.append(request)
+        return httpx.Response(200, json={"choices": [{"message": {"content": _CLEAN_THAI}}]})
+
+    result = _provider(httpx.MockTransport(success)).extract_pages(BytesIO(_pdf_bytes(20)), (20,))
+    assert result == {20: _CLEAN_THAI}
+    assert len(calls) == 1

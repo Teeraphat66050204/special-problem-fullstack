@@ -52,12 +52,12 @@ class TyphoonOcrProvider:
         source: PdfInput,
         page_numbers: Sequence[int],
     ) -> Mapping[int, str]:
-        """Render and OCR only the requested one-based front-matter pages."""
+        """Render at most six explicitly requested one-based pages, anywhere in a PDF."""
 
         api_key = self._required_api_key()
         requested_pages = tuple(dict.fromkeys(page_numbers))
-        if any(page < 1 or page > _MAX_OCR_PAGES for page in requested_pages):
-            raise OcrServiceError("Typhoon OCR page numbers must be between 1 and 6")
+        if len(requested_pages) > _MAX_OCR_PAGES or any(page < 1 for page in requested_pages):
+            raise OcrServiceError("Typhoon OCR accepts at most 6 positive page numbers per request")
         if not requested_pages:
             return {}
 

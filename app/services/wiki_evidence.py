@@ -633,7 +633,11 @@ def collect_wiki_source_evidence(source_text: str) -> WikiSourceEvidence:
     if not source_pages:
         return WikiSourceEvidence(None, None, (), (), None, None, ())
 
-    pages = {page.number: page.text for page in source_pages}
+    # Focused source may contain multiple excerpts from the same physical page.
+    # Preserve every excerpt instead of overwriting abstract keywords with metadata.
+    pages: dict[int, str] = {}
+    for page in source_pages:
+        pages[page.number] = "\n\n".join(filter(None, (pages.get(page.number), page.text)))
     english_by_page = {page.number: _english_title_candidates(page) for page in source_pages}
     english_candidates = [
         candidate for candidates in english_by_page.values() for candidate in candidates

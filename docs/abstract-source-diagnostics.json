@@ -1,0 +1,654 @@
+[
+  {
+    "document": "document_007.pdf",
+    "page_count": 94,
+    "abstract_pages": [
+      5
+    ],
+    "chapter_start": 7,
+    "chapter_end": 8,
+    "chapter_two_start": 9,
+    "signals": [
+      "page 5: standalone English abstract with body",
+      "page 7: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 9: Chapter 2: heading near page start, section 2.1 nearby, substantial following text"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      7,
+      8,
+      62
+    ],
+    "source_characters": 4247
+  },
+  {
+    "document": "document_009.pdf",
+    "page_count": 37,
+    "abstract_pages": [
+      5
+    ],
+    "chapter_start": 10,
+    "chapter_end": 12,
+    "chapter_two_start": 13,
+    "signals": [
+      "page 5: standalone English abstract with body",
+      "page 8: rejected TOC",
+      "page 9: rejected TOC",
+      "page 10: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 13: Chapter 2: heading near page start, section 2.1 nearby, substantial following text"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      10,
+      11
+    ],
+    "source_characters": 3405
+  },
+  {
+    "document": "document_022.pdf",
+    "page_count": 60,
+    "abstract_pages": [
+      4,
+      5
+    ],
+    "chapter_start": 12,
+    "chapter_end": 12,
+    "chapter_two_start": 13,
+    "signals": [
+      "page 4: standalone Thai abstract with body",
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC",
+      "page 8: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: Chapter 1: heading near page start, section 1.1 nearby, substantial following text",
+      "page 13: Chapter 2: heading near page start, section 2.1 nearby, substantial following text"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      4,
+      5,
+      12
+    ],
+    "source_characters": 4706
+  },
+  {
+    "document": "document_064.pdf",
+    "page_count": 56,
+    "abstract_pages": [
+      5
+    ],
+    "chapter_start": null,
+    "chapter_end": null,
+    "chapter_two_start": null,
+    "signals": [
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      5
+    ],
+    "source_characters": 2510
+  },
+  {
+    "document": "document_071.pdf",
+    "page_count": 70,
+    "abstract_pages": [
+      4,
+      5,
+      6,
+      7
+    ],
+    "chapter_start": 16,
+    "chapter_end": 18,
+    "chapter_two_start": 19,
+    "signals": [
+      "page 4: standalone Thai abstract with body",
+      "page 6: standalone English abstract with body",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: rejected TOC",
+      "page 13: rejected TOC",
+      "page 14: rejected TOC",
+      "page 16: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 19: Chapter 2: heading near page start, section 2.1 nearby, substantial following text"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      16,
+      17,
+      18,
+      70
+    ],
+    "source_characters": 9633
+  },
+  {
+    "document": "document_114.pdf",
+    "page_count": 158,
+    "abstract_pages": [
+      5,
+      6
+    ],
+    "chapter_start": 16,
+    "chapter_end": 21,
+    "chapter_two_start": 22,
+    "signals": [
+      "page 5: standalone English abstract with body",
+      "page 8: rejected TOC",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: rejected TOC",
+      "page 13: rejected TOC",
+      "page 14: rejected TOC",
+      "page 16: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 22: Chapter 2: heading near page start, section 2.1 nearby, substantial following text",
+      "page 128: rejected TOC"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      16,
+      18,
+      19,
+      158
+    ],
+    "source_characters": 6479
+  },
+  {
+    "document": "document_123.pdf",
+    "page_count": 142,
+    "abstract_pages": [
+      6,
+      7
+    ],
+    "chapter_start": null,
+    "chapter_end": null,
+    "chapter_two_start": null,
+    "signals": [
+      "page 6: standalone English abstract with body",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: rejected TOC",
+      "page 13: rejected TOC",
+      "page 14: rejected TOC",
+      "page 15: rejected TOC",
+      "page 16: rejected TOC",
+      "page 17: rejected TOC",
+      "page 18: rejected TOC"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      6,
+      7
+    ],
+    "source_characters": 2602
+  },
+  {
+    "document": "document_127.pdf",
+    "page_count": 106,
+    "abstract_pages": [
+      5
+    ],
+    "chapter_start": 12,
+    "chapter_end": 17,
+    "chapter_two_start": 18,
+    "signals": [
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC",
+      "page 8: rejected TOC",
+      "page 9: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 18: Chapter 2: heading near page start, section 2.1 nearby, substantial following text",
+      "page 20: rejected TOC"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      12,
+      13,
+      14,
+      15
+    ],
+    "source_characters": 7864
+  },
+  {
+    "document": "document_137.pdf",
+    "page_count": 123,
+    "abstract_pages": [
+      4,
+      5,
+      6,
+      7
+    ],
+    "chapter_start": 15,
+    "chapter_end": 23,
+    "chapter_two_start": 24,
+    "signals": [
+      "page 4: standalone Thai abstract with body",
+      "page 6: standalone English abstract with body",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: rejected TOC",
+      "page 13: rejected TOC",
+      "page 14: rejected TOC",
+      "page 15: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 24: Chapter 2: heading near page start, section 2.1 nearby, substantial following text",
+      "page 80: rejected TOC"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      4,
+      5,
+      6,
+      7,
+      15,
+      16,
+      17,
+      20,
+      21
+    ],
+    "source_characters": 10135
+  },
+  {
+    "document": "document_191.pdf",
+    "page_count": 122,
+    "abstract_pages": [
+      4,
+      5
+    ],
+    "chapter_start": 11,
+    "chapter_end": 14,
+    "chapter_two_start": 15,
+    "signals": [
+      "page 4: standalone Thai abstract with body",
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC",
+      "page 8: rejected TOC",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 15: Chapter 2: heading near page start, section 2.1 nearby, substantial following text"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      4,
+      5,
+      11,
+      12,
+      13
+    ],
+    "source_characters": 6343
+  },
+  {
+    "document": "document_213.pdf",
+    "page_count": 48,
+    "abstract_pages": [
+      6,
+      7
+    ],
+    "chapter_start": 14,
+    "chapter_end": 15,
+    "chapter_two_start": 16,
+    "signals": [
+      "page 6: standalone English abstract with body",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 12: rejected TOC",
+      "page 13: rejected TOC",
+      "page 14: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 16: Chapter 2: heading near page start, section 2.1 nearby, substantial following text"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      14,
+      15
+    ],
+    "source_characters": 5211
+  },
+  {
+    "document": "document_222.pdf",
+    "page_count": 75,
+    "abstract_pages": [
+      4,
+      5
+    ],
+    "chapter_start": 11,
+    "chapter_end": 13,
+    "chapter_two_start": 14,
+    "signals": [
+      "page 4: standalone Thai abstract with body",
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC",
+      "page 8: rejected TOC",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 14: Chapter 2: heading near page start, section 2.1 nearby, substantial following text"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      11,
+      12,
+      13
+    ],
+    "source_characters": 8174
+  },
+  {
+    "document": "document_251.pdf",
+    "page_count": 183,
+    "abstract_pages": [
+      5,
+      6
+    ],
+    "chapter_start": 25,
+    "chapter_end": 27,
+    "chapter_two_start": 28,
+    "signals": [
+      "page 5: standalone English abstract with body",
+      "page 8: rejected TOC",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: rejected TOC",
+      "page 13: rejected TOC",
+      "page 14: rejected TOC",
+      "page 15: rejected TOC",
+      "page 16: rejected TOC",
+      "page 17: rejected TOC",
+      "page 18: rejected TOC",
+      "page 19: rejected TOC",
+      "page 20: rejected TOC",
+      "page 21: rejected TOC",
+      "page 22: rejected TOC",
+      "page 23: rejected TOC",
+      "page 25: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 28: Chapter 2: heading near page start, section 2.1 nearby, substantial following text"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      5,
+      6,
+      25,
+      26,
+      27
+    ],
+    "source_characters": 5889
+  },
+  {
+    "document": "document_253.pdf",
+    "page_count": 81,
+    "abstract_pages": [
+      5
+    ],
+    "chapter_start": 15,
+    "chapter_end": 16,
+    "chapter_two_start": 17,
+    "signals": [
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC",
+      "page 8: rejected TOC",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: rejected TOC",
+      "page 13: rejected TOC",
+      "page 15: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 17: Chapter 2: heading near page start, section 2.1 nearby, substantial following text"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      15,
+      16
+    ],
+    "source_characters": 5612
+  },
+  {
+    "document": "document_254.pdf",
+    "page_count": 95,
+    "abstract_pages": [
+      5
+    ],
+    "chapter_start": null,
+    "chapter_end": null,
+    "chapter_two_start": null,
+    "signals": [
+      "page 5: standalone English abstract with body"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      5
+    ],
+    "source_characters": 1608
+  },
+  {
+    "document": "document_266.pdf",
+    "page_count": 108,
+    "abstract_pages": [
+      4,
+      5
+    ],
+    "chapter_start": 16,
+    "chapter_end": 18,
+    "chapter_two_start": 19,
+    "signals": [
+      "page 4: standalone Thai abstract with body",
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC",
+      "page 8: rejected TOC",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: rejected TOC",
+      "page 13: rejected TOC",
+      "page 14: rejected TOC",
+      "page 16: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 19: Chapter 2: heading near page start, section 2.1 nearby, substantial following text",
+      "page 105: rejected TOC"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      16,
+      17,
+      18,
+      106
+    ],
+    "source_characters": 7241
+  },
+  {
+    "document": "document_283.pdf",
+    "page_count": 62,
+    "abstract_pages": [
+      4,
+      5
+    ],
+    "chapter_start": 13,
+    "chapter_end": 14,
+    "chapter_two_start": 15,
+    "signals": [
+      "page 4: standalone Thai abstract with body",
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC",
+      "page 8: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: rejected TOC",
+      "page 13: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 15: Chapter 2: heading near page start, section 2.1 nearby, substantial following text",
+      "page 55: rejected TOC"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      13,
+      14
+    ],
+    "source_characters": 7080
+  },
+  {
+    "document": "document_295.pdf",
+    "page_count": 105,
+    "abstract_pages": [
+      4,
+      5
+    ],
+    "chapter_start": 13,
+    "chapter_end": 16,
+    "chapter_two_start": 17,
+    "signals": [
+      "page 4: standalone Thai abstract with body",
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC",
+      "page 13: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 17: Chapter 2: heading near page start, section 2.1 nearby, substantial following text",
+      "page 102: rejected TOC",
+      "page 103: rejected TOC"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      13,
+      14,
+      15,
+      96
+    ],
+    "source_characters": 7128
+  },
+  {
+    "document": "document_335.pdf",
+    "page_count": 160,
+    "abstract_pages": [
+      5
+    ],
+    "chapter_start": 18,
+    "chapter_end": 19,
+    "chapter_two_start": 20,
+    "signals": [
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC",
+      "page 8: rejected TOC",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 12: rejected TOC",
+      "page 13: rejected TOC",
+      "page 14: rejected TOC",
+      "page 15: rejected TOC",
+      "page 16: rejected TOC",
+      "page 17: rejected TOC",
+      "page 18: Chapter 1: heading near page start, section 1.1 nearby, introduction nearby, substantial following text",
+      "page 20: Chapter 2: heading near page start, section 2.1 nearby, substantial following text",
+      "page 159: rejected TOC",
+      "page 160: rejected TOC"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      18,
+      19,
+      34,
+      35,
+      36,
+      37,
+      39
+    ],
+    "source_characters": 3656
+  },
+  {
+    "document": "document_339.pdf",
+    "page_count": 151,
+    "abstract_pages": [
+      5
+    ],
+    "chapter_start": 14,
+    "chapter_end": 19,
+    "chapter_two_start": 20,
+    "signals": [
+      "page 5: standalone English abstract with body",
+      "page 7: rejected TOC",
+      "page 8: rejected TOC",
+      "page 9: rejected TOC",
+      "page 10: rejected TOC",
+      "page 11: rejected TOC",
+      "page 14: Chapter 1: heading near page start, introduction nearby, substantial following text",
+      "page 20: Chapter 2: heading near page start, substantial following text",
+      "page 151: rejected TOC"
+    ],
+    "selected_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "source_characters": 10196
+  }
+]

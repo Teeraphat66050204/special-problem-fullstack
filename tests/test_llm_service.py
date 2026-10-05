@@ -4,13 +4,12 @@ import httpx
 import pytest
 
 from app.config import Settings
-from app.prompts import REQUIRED_WIKI_HEADINGS, WikiStructureIssueCode, build_wiki_generation_prompt
+from app.prompts.abstract_generation import build_abstract_generation_prompt
 from app.services import llm_service
 
 
 def valid_thai_markdown() -> str:
-    sections = "\n\n".join(f"{heading}\nเนื้อหาจากเอกสารต้นฉบับ" for heading in REQUIRED_WIKI_HEADINGS)
-    return f"# ระบบค้นคืนข้อมูล\n\n{sections}"
+    return "โครงงานนี้พัฒนาระบบค้นคืนข้อมูลภาษาไทยเพื่อสนับสนุนการค้นหาเอกสาร"
 
 
 def fake_response(status_code: int = 200, body: dict | None = None) -> httpx.Response:
@@ -52,7 +51,7 @@ def test_successful_generation_sends_configured_model_and_existing_prompt(
     assert captured["url"] == "http://ollama.test:11434/api/generate"
     assert captured["payload"] == {
         "model": settings.ollama_model,
-        "prompt": build_wiki_generation_prompt(source_text),
+        "prompt": build_abstract_generation_prompt(source_text),
         "stream": False,
         "options": {"temperature": settings.ollama_temperature},
     }
@@ -72,7 +71,7 @@ def test_generate_wiki_calls_the_existing_prompt_builder(settings, monkeypatch) 
         assert json["prompt"] == "sentinel prompt"
         return fake_response()
 
-    monkeypatch.setattr(llm_service, "build_wiki_generation_prompt", build_prompt)
+    monkeypatch.setattr(llm_service, "build_abstract_generation_prompt", build_prompt)
     monkeypatch.setattr(llm_service.httpx, "post", post)
 
     assert llm_service.generate_wiki(source_text) == valid_thai_markdown()
@@ -157,12 +156,10 @@ def test_invalid_markdown_structure_is_rejected(settings, monkeypatch) -> None:
         lambda *args, **kwargs: fake_response(body={"response": "# Project\n\n## Wrong section"}),
     )
 
-    with pytest.raises(llm_service.InvalidWikiMarkdownError) as failure:
+    with pytest.raises(llm_service.InvalidAbstractError) as failure:
         llm_service.generate_wiki("Source text")
 
-    assert WikiStructureIssueCode.UNEXPECTED_LEVEL_TWO_HEADING in {
-        issue.code for issue in failure.value.issues
-    }
+    assert "markdown_or_list" in {issue for issue in failure.value.issues}
 
 
 def test_valid_thai_markdown_is_returned_without_rewriting(settings, monkeypatch) -> None:
@@ -223,3 +220,17 @@ def test_ollama_settings_are_environment_backed(monkeypatch) -> None:
     assert settings.ollama_model == "qwen2.5:3b-instruct"
     assert settings.ollama_timeout_seconds == 42
     assert settings.ollama_temperature == 0.1
+
+
+def test_abstract_cleanup_is_auditable_and_never_calls_legacy_finalizer(settings, monkeypatch):
+    raw = " \nบทคัดย่อ: " + valid_thai_markdown() + " \n"
+    monkeypatch.setattr(llm_service.OllamaClient, "generate", lambda self, prompt: raw)
+    monkeypatch.setattr(
+        llm_service,
+        "refine_wiki_markdown",
+        lambda *args: pytest.fail("Legacy finalizer must not run"),
+    )
+    result = llm_service.generate_abstract_result("source")
+    assert result.abstract == valid_thai_markdown()
+    assert result.raw_text == raw
+    assert result.cleanup_changes

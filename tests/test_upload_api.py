@@ -84,6 +84,58 @@ def test_successful_upload_creates_document_and_returns_id(api_database: Engine)
         )
 
 
+def test_targeted_chapter_ocr_runs_before_temporary_pdf_removal_and_is_reused(
+    monkeypatch,
+    api_database,
+):
+    from app.api import wiki
+    from app.services import chapter_ocr
+
+    body = "โครงงานนี้พัฒนาระบบค้นคืนเอกสารภาษาไทยเพื่อสนับสนุนการเข้าถึงข้อมูล " * 4
+    texts = {
+        5: "Abstract\nThis project retrieves Thai documents.",
+        15: "ïììĊę 1\nïìîĞć\n1.1 ÙüćöđðŨîöć\n" + body,
+        16: "บทที่ 2\n2.1 ทฤษฎี\n" + body,
+    }
+    pages = tuple(PdfPageText(i, texts.get(i, "")) for i in range(1, 17))
+    native = PdfExtractionResult(16, "full original text", pages, ())
+    pdf_paths = []
+    calls = []
+
+    class ChapterProvider:
+        def extract_pages(self, source, page_numbers):
+            pdf_paths.append(Path(source.name))
+            assert pdf_paths[-1].exists()
+            assert source.read(5) == b"%PDF-"
+            calls.extend(page_numbers)
+            return {15: "บทที่ 1\nบทนำ\n1.1 ความเป็นมา\n" + body}
+
+    monkeypatch.setattr(upload, "extract_pdf", lambda source: native)
+    monkeypatch.setattr(upload, "load_ocr_provider", lambda settings: None)
+    monkeypatch.setattr(chapter_ocr, "load_ocr_provider", lambda settings: ChapterProvider())
+    response = post_pdf(make_pdf("temporary PDF"))
+    assert response.status_code == 200
+    assert calls == [15]
+    assert all(not path.exists() for path in pdf_paths)
+    document_id = response.json()["document_id"]
+    with Session(api_database) as session:
+        document = session.get(Document, document_id)
+        restored = extraction_from_document(document)
+        assert restored.pages[14].provenance is TextProvenance.OCR
+        assert restored.pages[14].native_text == texts[15]
+
+    def generate(source):
+        assert "Source page 15 (Chapter 1)" in source
+        assert "1.1 ความเป็นมา" in source
+        return body.strip()
+
+    monkeypatch.setattr(wiki, "generate_wiki", generate)
+    result = TestClient(app).post("/api/wiki/generate", json={"document_id": document_id})
+    assert result.status_code == 200
+    assert 15 in result.json()["selected_pages"]
+    assert calls == [15]  # Generation reuses persisted OCR and never needs the PDF.
+
+
 def test_upload_persists_supported_document_metadata(
     monkeypatch: pytest.MonkeyPatch, api_database: Engine
 ) -> None:

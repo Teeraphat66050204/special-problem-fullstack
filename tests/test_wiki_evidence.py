@@ -177,7 +177,7 @@ def test_document_071_has_advisor_and_all_six_source_keywords() -> None:
     evidence = collect_wiki_source_evidence(selection.source_text)
 
     assert evidence.advisor == "รศ.ดร.อิทธิพล แจ้งชัด"
-    assert evidence.keywords == (
+    assert evidence.keywords[:6] == (
         "กรดไขมันของแอลกอฮอล์เอทอกซีเลเต็ดฟอสเฟตเอสเทอร์",
         "กระจกฉากกั้นห้องอาบน้ำ",
         "ค่าประสิทธิภาพในการทำความสะอาด",

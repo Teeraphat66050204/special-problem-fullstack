@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         le=6,
         validation_alias=AliasChoices("OCR_MAX_PAGES", "OCR_FRONT_MATTER_PAGE_LIMIT"),
     )
+    chapter_ocr_max_pages: int = Field(default=6, ge=0, le=6)
 
     # Retained for compatibility with external provider factories configured before
     # the built-in Typhoon adapter was introduced.
