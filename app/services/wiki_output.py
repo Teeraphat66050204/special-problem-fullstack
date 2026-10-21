@@ -1,4 +1,7 @@
-"""Apply deterministic, source-backed title, metadata, and marker finalization."""
+"""Legacy seven-section Wiki finalizer, retained only for historical evaluation.
+
+Production project summaries use app.prompts.project_summary instead.
+"""
 
 from __future__ import annotations
 

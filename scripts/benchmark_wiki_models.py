@@ -29,6 +29,7 @@ from app.datasets.groundtruth import (
 )
 from app.evaluation.wiki_generation import evaluate_markdown
 from app.prompts import REQUIRED_WIKI_HEADINGS, build_wiki_generation_prompt
+from app.services.legacy_wiki_source import prepare_wiki_source
 from app.services.llm_service import LLMServiceError, OllamaClient, OllamaGenerationResult
 from app.services.ocr_service import (
     OcrServiceError,
@@ -39,8 +40,11 @@ from app.services.ocr_service import (
 from app.services.pdf_extractor import PdfExtractionError, extract_pdf
 from app.services.wiki_evidence import WikiSourceEvidence, collect_wiki_source_evidence
 from app.services.wiki_output import WikiOutputError, refine_wiki_markdown
-from app.services.wiki_source import prepare_wiki_source
-from benchmark_telemetry import ResourceTelemetrySampler
+
+if __package__:
+    from scripts.benchmark_telemetry import ResourceTelemetrySampler
+else:
+    from benchmark_telemetry import ResourceTelemetrySampler
 
 DEFAULT_MODELS = ("qwen3:8b", "qwen3:14b")
 SCALAR_FIELDS = ("title", "english_title", "advisor", "academic_year")

@@ -1,17 +1,21 @@
-"""Generate an in-memory Draft Wiki from a persisted PDF extraction."""
+"""Generate project metadata/summary drafts and publish reviewed Wiki versions."""
 
+import logging
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlmodel import Session
+from sqlalchemy.exc import SQLAlchemyError
+from sqlmodel import Session, select
 
 from app.db import get_session
-from app.models import Document, ExtractionStatus
+from app.models import Document, ExtractionStatus, WikiPage, WikiStatus
 from app.prompts import validate_wiki_markdown
+from app.prompts.project_summary import validate_project_summary
 from app.services.document_extraction import StoredExtractionError, extraction_from_document
 from app.services.llm_service import (
     EmptyModelResponseError,
+    InvalidProjectSummaryError,
     InvalidWikiMarkdownError,
     InvalidWikiOutputError,
     LLMServiceError,
@@ -19,14 +23,27 @@ from app.services.llm_service import (
     OllamaRuntimeError,
     OllamaTimeoutError,
     OllamaUnavailableError,
-    generate_wiki,
+)
+from app.services.llm_service import (
+    generate_project_summary_result as generate_wiki,
 )
 from app.services.pdf_extractor import PdfExtractionWarning
-from app.services.wiki_evidence import collect_wiki_source_evidence
+from app.services.wiki_evidence import WikiSourceEvidence, collect_wiki_source_evidence
 from app.services.wiki_source import prepare_wiki_source
 from app.services.wiki_timing import time_wiki_stage, wiki_request_timing
 
+logger = logging.getLogger("uvicorn.error")
 router = APIRouter()
+
+
+def _log_ollama_diagnostics(document_id: int, error: LLMServiceError) -> None:
+    diagnostics = getattr(error, "diagnostics", None)
+    if diagnostics is not None:
+        logger.warning(
+            "wiki.generate Ollama failure document_id=%s diagnostics=%s",
+            document_id,
+            diagnostics.as_dict(),
+        )
 
 
 class DraftWikiRequest(BaseModel):
@@ -36,14 +53,23 @@ class DraftWikiRequest(BaseModel):
 
 
 class DraftWikiResponse(BaseModel):
-    """Generated Markdown tied to a Document, without Wiki persistence or publication."""
+    """Project metadata and summary tied to a Document, without persistence."""
 
     status: Literal["draft"] = "draft"
     document_id: int
     original_filename: str
     page_count: int
     selected_pages: tuple[int, ...]
-    generated_markdown: str
+    metadata: "ProjectMetadataResponse"
+    generated_summary: str
+    generated_abstract: str = Field(
+        description="Deprecated alias of generated_summary.",
+        deprecated=True,
+    )
+    generated_markdown: str = Field(
+        description="Deprecated alias of generated_summary; contains plain text.",
+        deprecated=True,
+    )
     structure_valid: bool
     warnings: tuple[PdfExtractionWarning, ...]
     title: str | None
@@ -55,21 +81,138 @@ class DraftWikiResponse(BaseModel):
     keywords: tuple[str, ...]
 
 
+class ProjectMetadataResponse(BaseModel):
+    title_th: str | None = None
+    title_en: str | None = None
+    students: tuple[str, ...] = ()
+    student_ids: tuple[str, ...] = ()
+    academic_year: str | None = None
+    advisor: str | None = None
+    department: str | None = None
+    faculty: str | None = None
+    institution: str | None = None
+    project_type: str | None = None
+
+
+class PublishWikiRequest(BaseModel):
+    """Human-reviewed Markdown to publish for an existing Document."""
+
+    document_id: int = Field(gt=0)
+    markdown_content: str = Field(min_length=1)
+
+
+class PublishedWikiResponse(BaseModel):
+    """The newly persisted, currently published Wiki version."""
+
+    wiki_page_id: int
+    document_id: int
+    version: int
+    status: WikiStatus
+    is_published: bool
+    markdown_content: str
+
+
+@router.post(
+    "/api/wiki/publish",
+    response_model=PublishedWikiResponse,
+    summary="Publish a human-reviewed Wiki",
+    description=(
+        "Validate already-reviewed Markdown against the strict canonical Wiki schema, "
+        "archive any currently published version, and persist the Markdown as the next "
+        "published version. This endpoint does not run generation or finalization."
+    ),
+    responses={
+        404: {"description": "Document not found"},
+        422: {"description": "Submitted Markdown violates the canonical Wiki schema"},
+        500: {"description": "Wiki publication could not be persisted"},
+    },
+)
+def publish_reviewed_wiki(
+    request: PublishWikiRequest,
+    session: Annotated[Session, Depends(get_session)],
+) -> PublishedWikiResponse:
+    """Validate and atomically publish the next Wiki version for a Document."""
+
+    try:
+        document = session.exec(
+            select(Document).where(Document.id == request.document_id).with_for_update()
+        ).one_or_none()
+    except SQLAlchemyError as exc:
+        session.rollback()
+        logger.exception("wiki.publish document lookup failed document_id=%s", request.document_id)
+        raise HTTPException(status_code=500, detail="Could not publish Wiki") from exc
+
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    validation = validate_wiki_markdown(request.markdown_content)
+    if not validation.is_valid:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Submitted Wiki Markdown has invalid structure",
+                "issues": [
+                    {"code": issue.code.value, "heading": issue.heading}
+                    for issue in validation.issues
+                ],
+            },
+        )
+
+    try:
+        existing_pages = session.exec(
+            select(WikiPage).where(WikiPage.document_id == request.document_id)
+        ).all()
+        next_version = max((page.version for page in existing_pages), default=0) + 1
+
+        for page in existing_pages:
+            if page.status is WikiStatus.PUBLISHED or page.is_published:
+                page.status = WikiStatus.ARCHIVED
+                page.is_published = False
+
+        wiki_page = WikiPage(
+            document_id=request.document_id,
+            markdown_content=request.markdown_content,
+            version=next_version,
+            status=WikiStatus.PUBLISHED,
+            is_published=True,
+        )
+        session.add(wiki_page)
+        session.flush()
+        if wiki_page.id is None:
+            raise SQLAlchemyError("Published WikiPage did not receive an ID")
+
+        response = PublishedWikiResponse(
+            wiki_page_id=wiki_page.id,
+            document_id=request.document_id,
+            version=next_version,
+            status=wiki_page.status,
+            is_published=wiki_page.is_published,
+            markdown_content=wiki_page.markdown_content,
+        )
+        session.commit()
+    except SQLAlchemyError as exc:
+        session.rollback()
+        logger.exception("wiki.publish persistence failed document_id=%s", request.document_id)
+        raise HTTPException(status_code=500, detail="Could not publish Wiki") from exc
+
+    return response
+
+
 @router.post(
     "/api/wiki/generate",
     response_model=DraftWikiResponse,
-    summary="Generate a Draft Wiki from an uploaded Document",
+    summary="Generate project metadata and a Thai summary from an uploaded Document",
     description=(
-        "Send the `document_id` returned by `POST /api/upload`. Only selected title, "
-        "metadata, abstract, and keyword pages from its persisted extraction are sent "
-        "to the configured Ollama model. The generated draft is validated and returned "
-        "without persistence."
+        "Send the `document_id` returned by `POST /api/upload`. Document-wide abstract "
+        "and real Chapter 1 detection selects focused excerpts and deterministic metadata "
+        "from persisted extraction. The model returns only a moderately detailed Thai "
+        "summary; Python combines both without persistence or publication."
     ),
     responses={
         404: {"description": "Document not found"},
         409: {"description": "Document extraction is incomplete or unavailable"},
         422: {"description": "No usable focused source"},
-        502: {"description": "Ollama returned an invalid Wiki or runtime error"},
+        502: {"description": "Ollama returned an invalid project summary or runtime error"},
         503: {"description": "Ollama or the configured model is unavailable"},
         504: {"description": "Ollama generation timed out"},
     },
@@ -97,54 +240,87 @@ def generate_draft_wiki(
             with time_wiki_stage("source_selection"):
                 selection = prepare_wiki_source(extraction)
                 if not selection.source_text.strip():
-                    raise ValueError(
-                        "No usable front-matter text was extracted for Wiki generation"
-                    )
+                    raise ValueError("No usable abstract or real Chapter 1 source was extracted")
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail="Could not prepare Wiki source") from exc
 
         with time_wiki_stage("evidence_extraction"):
-            evidence = collect_wiki_source_evidence(selection.source_text)
+            try:
+                evidence = collect_wiki_source_evidence(selection.source_text)
+                for warning in evidence.warnings:
+                    logger.warning(
+                        "wiki.generate metadata warning document_id=%s code=%s message=%s",
+                        request.document_id,
+                        warning.code,
+                        warning.message,
+                    )
+            except Exception:
+                logger.exception("Optional deterministic project metadata extraction failed")
+                evidence = WikiSourceEvidence(None, None, (), (), None, None, ())
 
         try:
-            markdown = generate_wiki(selection.source_text)
+            generation = generate_wiki(selection.summary_source_text)
         except OllamaUnavailableError as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
             raise HTTPException(status_code=503, detail="Ollama is unavailable") from exc
         except OllamaModelNotFoundError as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
             raise HTTPException(
                 status_code=503, detail="Configured Ollama model is unavailable"
             ) from exc
         except OllamaTimeoutError as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
             raise HTTPException(status_code=504, detail="Wiki generation timed out") from exc
-        except (InvalidWikiMarkdownError, InvalidWikiOutputError, EmptyModelResponseError) as exc:
-            raise HTTPException(status_code=502, detail="Generated Wiki is invalid") from exc
+        except (
+            InvalidProjectSummaryError,
+            InvalidWikiMarkdownError,
+            InvalidWikiOutputError,
+            EmptyModelResponseError,
+        ) as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
+            raise HTTPException(
+                status_code=502, detail="Generated project summary is invalid"
+            ) from exc
         except OllamaRuntimeError as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
             raise HTTPException(status_code=502, detail="Ollama generation failed") from exc
         except LLMServiceError as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
             raise HTTPException(status_code=502, detail="Wiki generation failed") from exc
         except Exception as exc:
-            raise HTTPException(status_code=500, detail="Could not generate Draft Wiki") from exc
+            raise HTTPException(
+                status_code=500, detail="Could not generate project summary"
+            ) from exc
+
+        # String support keeps integrations that monkeypatch the former generator
+        # working while production returns a result carrying summary diagnostics.
+        summary = generation if isinstance(generation, str) else generation.generated_summary
 
         with time_wiki_stage("validation"):
-            validation = validate_wiki_markdown(markdown)
+            validation = validate_project_summary(summary)
         if not validation.is_valid:
-            raise HTTPException(status_code=502, detail="Generated Wiki has invalid structure")
+            raise HTTPException(status_code=502, detail="Generated project summary is invalid")
+
+        metadata = ProjectMetadataResponse(**evidence.project_metadata())
 
         return DraftWikiResponse(
             document_id=request.document_id,
             original_filename=document.original_filename,
             page_count=extraction.page_count,
             selected_pages=selection.selected_pages,
-            generated_markdown=markdown,
+            metadata=metadata,
+            generated_summary=summary,
+            generated_abstract=summary,
+            generated_markdown=summary,
             structure_valid=validation.is_valid,
             warnings=extraction.warnings,
-            title=evidence.title,
-            english_title=evidence.title_en,
-            students=evidence.students,
-            student_ids=evidence.student_ids,
-            advisor=evidence.advisor,
-            academic_year=evidence.academic_year,
+            title=evidence.title or metadata.title_th,
+            english_title=metadata.title_en,
+            students=metadata.students,
+            student_ids=metadata.student_ids,
+            advisor=metadata.advisor,
+            academic_year=metadata.academic_year,
             keywords=evidence.keywords,
         )

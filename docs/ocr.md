@@ -3,7 +3,9 @@
 PyMuPDF remains the primary PDF extractor. The application assesses native text
 quality before loading front-matter evidence. It calls Typhoon only for degraded
 pages selected from pages 1–6; `OCR_MAX_PAGES` is validated with a hard maximum
-of 6 in both configuration and the OCR service.
+of 6 in both configuration and the OCR service. If Chapter 1 is still missing,
+uploads may additionally OCR at most `CHAPTER_OCR_MAX_PAGES` targeted pages
+anywhere in the PDF. See [chapter recovery](chapter-ocr-fallback.md).
 
 ## Setup
 
@@ -16,6 +18,7 @@ TYPHOON_BASE_URL=https://api.opentyphoon.ai/v1
 TYPHOON_OCR_MODEL=typhoon-ocr
 OCR_TIMEOUT_SECONDS=120
 OCR_MAX_PAGES=6
+CHAPTER_OCR_MAX_PAGES=6
 ```
 
 Put the API key only in the local `.env` or the deployment secret store. `.env`
@@ -35,8 +38,10 @@ response failures produce an `ocr_failed` warning. These warnings contain no API
 response bodies, credentials, PDF text, or stack traces. In both cases, native
 PyMuPDF text remains selected.
 
-Successful OCR is compared with native text using the same deterministic quality
+Successful front-matter OCR is compared with native text using deterministic quality
 checks. Better OCR is selected with `ocr` provenance; complementary text may be
 kept as `mixed`; worse OCR is stored for inspection but the selected text and
 provenance remain `pymupdf`. The production upload and benchmark harness both use
-this same fallback service.
+this same front-matter fallback service. Chapter recovery additionally requires
+the shared real-chapter heuristics, uses its own total page budget, and runs only
+on upload/local diagnostics. Historical benchmarks do not use chapter recovery.

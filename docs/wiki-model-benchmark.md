@@ -1,5 +1,10 @@
 # Wiki model benchmark
 
+> Historical seven-section Wiki contract. Production generation now returns a
+> [project metadata and Thai summary draft](abstract-generation.md). Legacy code
+> explicitly retains the old selector and contract. Existing results remain
+> unchanged; the project-summary smoke benchmark is separate.
+
 The benchmark runs every pair listed in `data/index.json` through the existing
 PDF extractor, focused source selector, evidence extractor, Wiki prompt builder,
 source-backed output finalizer, and strict validator. Each PDF is prepared once,
@@ -60,7 +65,8 @@ python scripts/benchmark_wiki_models.py --models qwen3:8b --data-dir data --outp
 
 The script uses `OLLAMA_BASE_URL`, `OLLAMA_TIMEOUT_SECONDS`, and
 `OLLAMA_TEMPERATURE` from `.env` or the environment. The temperature and all
-other request settings are held constant across models.
+other request settings are held constant across models. The timeout defaults to
+120 seconds; a value of `0` or lower disables the HTTP timeout.
 
 ## Outputs and metrics
 

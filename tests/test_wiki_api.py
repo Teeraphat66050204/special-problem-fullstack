@@ -55,11 +55,13 @@ def post_pdf(data: bytes, filename: str = "project.pdf", content_type: str = "ap
 
 
 def wiki_markdown(title: str, *, overview: str = MISSING_INFORMATION_MARKER) -> str:
-    sections = "\n\n".join(
-        f"{heading}\n{overview if index == 0 else MISSING_INFORMATION_MARKER}"
-        for index, heading in enumerate(REQUIRED_WIKI_HEADINGS)
+    if overview != MISSING_INFORMATION_MARKER:
+        return " ".join(overview for _ in range(12))
+    sentence = (
+        "โครงงานนี้พัฒนาแอปพลิเคชันให้คำปรึกษาโดยใช้ iOS และ Swift "
+        "เพื่อรองรับการให้คำปรึกษาทางไกลและช่วยให้ผู้ใช้เข้าถึงบริการได้สะดวกขึ้น"
     )
-    return f"# {title}\n\n{sections}"
+    return " ".join(sentence for _ in range(4))
 
 
 def sample_pdf() -> bytes:
@@ -67,7 +69,11 @@ def sample_pdf() -> bytes:
     return make_pdf(
         f"{title}\n2563",
         f"{title}\nJutharat Tuayjan",
-        "Student ID 61050154\nAdvisor: Dr Smith",
+        (
+            "Student ID 61050154\nAdvisor: Dr Smith\n"
+            "Department: Computer Science\nFaculty: Engineering\n"
+            "Institution: Example University\nProject Type: Special Project"
+        ),
         "Abstract\nProject uses iOS and Swift.\nKeywords: iOS, Swift",
         None,
         "Chapter 8\nFULL_REPORT_ONLY_SENTINEL",
@@ -80,9 +86,9 @@ def test_pdf_to_draft_wiki_uses_focused_source_and_preserves_metadata(
     title = "REMOTE CONSULTATION AND CONSULTATION APPLICATION ON iOS"
     prompts: list[str] = []
 
-    def fake_ollama(self: llm_service.OllamaClient, prompt: str) -> str:
+    def fake_ollama(self: llm_service.OllamaClient, prompt: str, **kwargs) -> str:
         prompts.append(prompt)
-        return wiki_markdown("Invented title", overview=f"{MISSING_INFORMATION_MARKER}.")
+        return wiki_markdown("Unused title")
 
     monkeypatch.setattr(llm_service.OllamaClient, "generate", fake_ollama)
     response = post_pdf(sample_pdf(), "../../project.pdf")
@@ -95,21 +101,38 @@ def test_pdf_to_draft_wiki_uses_focused_source_and_preserves_metadata(
     assert data["page_count"] == 6
     assert data["selected_pages"] == [1, 2, 3, 4]
     assert data["structure_valid"] is True
-    assert data["generated_markdown"].startswith(f"# {title}\n")
+    assert (
+        data["generated_summary"]
+        == data["generated_abstract"]
+        == data["generated_markdown"]
+        == wiki_markdown(title)
+    )
     assert f"{MISSING_INFORMATION_MARKER}." not in data["generated_markdown"]
-    assert "- นักศึกษา: Jutharat Tuayjan" in data["generated_markdown"]
     assert data["title"] == title
     assert data["english_title"] == title
     assert data["students"] == ["Jutharat Tuayjan"]
     assert data["student_ids"] == ["61050154"]
     assert data["advisor"] == "Dr Smith"
     assert data["academic_year"] == "2563"
+    assert data["metadata"] == {
+        "title_th": None,
+        "title_en": title,
+        "students": ["Jutharat Tuayjan"],
+        "student_ids": ["61050154"],
+        "academic_year": "2563",
+        "advisor": "Dr Smith",
+        "department": "Computer Science",
+        "faculty": "Engineering",
+        "institution": "Example University",
+        "project_type": "Special Project",
+    }
     assert data["keywords"] == ["iOS", "Swift"]
-    assert "- อาจารย์ที่ปรึกษา: Dr Smith" in data["generated_markdown"]
-    assert "คำสำคัญ: iOS, Swift" in data["generated_markdown"]
     assert data["warnings"][0]["page_number"] == 5
     assert "FULL_REPORT_ONLY_SENTINEL" not in prompts[0]
     assert "Source page 4 (English abstract)" in prompts[0]
+    assert "Student ID 61050154" not in prompts[0]
+    assert "Department: Computer Science" not in prompts[0]
+    assert "Example University" not in prompts[0]
 
 
 def test_persisted_ocr_abstract_reaches_source_passed_to_generation(
@@ -179,7 +202,7 @@ def test_persisted_ocr_abstract_reaches_source_passed_to_generation(
     assert response.status_code == 200, response.text
     assert len(received_sources) == 1
     assert thai_ocr in received_sources[0]
-    assert english_ocr in received_sources[0]
+    assert english_ocr not in received_sources[0]
     assert corrupted_native not in received_sources[0]
     assert response.json()["keywords"] == ["โอซีอาร์", "เอกสาร"]
 
@@ -190,7 +213,7 @@ def test_timing_logs_cover_pipeline_without_changing_response(
     monkeypatch.setattr(
         llm_service.OllamaClient,
         "generate",
-        lambda self, prompt: wiki_markdown("Generated title"),
+        lambda self, prompt, **kwargs: wiki_markdown("Generated title"),
     )
     upload_response = post_upload(sample_pdf(), "timed-project.pdf")
     document_id = upload_response.json()["document_id"]
@@ -252,41 +275,16 @@ def test_route_is_documented_in_openapi_and_docs() -> None:
     assert client.get("/docs").status_code == 200
 
 
-def test_api_uses_shared_finalizer_for_document_071_heading_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    raw = (
-        "# Invented title\n\n"
-        "## ภาพรวมโครงงาน\nข้อมูลในบทคัดย่อ\n\n"
-        "## วัตถุประสงค์\nวัตถุประสงค์ตามต้นฉบับ\n\n"
-        "## วิธีการ\nวิธีจากเอกสาร\n\n"
-        "## คำสำคัญ\nระบบผู้เชี่ยวชาญ, การวินิจฉัยโรค\n\n"
-        "## ผลการศึกษา\nผลตามต้นฉบับ 12.5%\n\n"
-        "## สรุป\nสรุปตามต้นฉบับ"
+def test_api_rejects_old_wiki_without_fabricating_sections(monkeypatch) -> None:
+    raw = "# title\n\n" + "\n\n".join(REQUIRED_WIKI_HEADINGS)
+    monkeypatch.setattr(
+        llm_service.OllamaClient,
+        "generate",
+        lambda self, prompt, **kwargs: raw,
     )
-    monkeypatch.setattr(llm_service.OllamaClient, "generate", lambda self, prompt: raw)
-
     response = post_pdf(sample_pdf())
-
-    assert response.status_code == 200, response.text
-    data = response.json()
-    assert data["structure_valid"] is True
-    markdown = data["generated_markdown"]
-    assert "## ผลการศึกษา" not in markdown
-    assert "## วิธีการ" not in markdown
-    assert "## คำสำคัญ" not in markdown
-    assert "คำสำคัญ: iOS, Swift" in markdown
-    assert "ระบบผู้เชี่ยวชาญ, การวินิจฉัยโรค" not in markdown
-    assert "## วิธีดำเนินงาน\n\nวิธีจากเอกสาร" in markdown
-    assert "## ผลลัพธ์\n\nผลตามต้นฉบับ 12.5%" in markdown
-    for heading in (
-        "## ปัญหาและที่มา",
-        "## เครื่องมือและเทคโนโลยี",
-    ):
-        assert f"{heading}\n\n{MISSING_INFORMATION_MARKER}" in markdown
-    assert [line for line in markdown.splitlines() if line.startswith("## ")] == list(
-        REQUIRED_WIKI_HEADINGS
-    )
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Generated project summary is invalid"
 
 
 def test_generate_requires_document_id_json() -> None:
@@ -358,7 +356,7 @@ def test_blank_pdf_has_no_focused_source_and_never_calls_ollama(
     )
     response = post_pdf(make_pdf(None))
     assert response.status_code == 422
-    assert "front-matter" in response.json()["detail"]
+    assert "abstract or real Chapter 1" in response.json()["detail"]
 
 
 def test_metadata_is_empty_when_focused_source_has_no_explicit_facts(
@@ -367,7 +365,7 @@ def test_metadata_is_empty_when_focused_source_has_no_explicit_facts(
     monkeypatch.setattr(
         wiki, "generate_wiki", lambda source: wiki_markdown(MISSING_INFORMATION_MARKER)
     )
-    response = post_pdf(make_pdf("General prose without explicit title or metadata"))
+    response = post_pdf(make_pdf("Abstract\nGeneral prose without explicit title or metadata"))
     assert response.status_code == 200
     data = response.json()
     assert data["title"] is None
@@ -392,14 +390,18 @@ def test_metadata_is_empty_when_focused_source_has_no_explicit_facts(
         (
             llm_service.InvalidWikiMarkdownError(()),
             502,
-            "Generated Wiki is invalid",
+            "Generated project summary is invalid",
         ),
         (
             llm_service.InvalidWikiOutputError("unsafe marker", "raw"),
             502,
-            "Generated Wiki is invalid",
+            "Generated project summary is invalid",
         ),
-        (llm_service.EmptyModelResponseError("empty"), 502, "Generated Wiki is invalid"),
+        (
+            llm_service.EmptyModelResponseError("empty"),
+            502,
+            "Generated project summary is invalid",
+        ),
     ],
 )
 def test_ollama_and_invalid_output_errors_are_mapped(
@@ -420,7 +422,7 @@ def test_invalid_structure_from_fake_generator_is_rejected(
     monkeypatch.setattr(wiki, "generate_wiki", lambda source: "# Wrong\nNo required sections")
     response = post_pdf(sample_pdf())
     assert response.status_code == 502
-    assert response.json()["detail"] == "Generated Wiki has invalid structure"
+    assert response.json()["detail"] == "Generated project summary is invalid"
 
 
 def test_thai_text_and_keywords_survive_the_api(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -473,7 +475,7 @@ def test_document_071_api_metadata_and_markdown_share_source_evidence(
     monkeypatch.setattr(
         llm_service.OllamaClient,
         "generate",
-        lambda self, prompt: wiki_markdown("Invented title"),
+        lambda self, prompt, **kwargs: wiki_markdown("Invented title"),
     )
 
     response = post_pdf(make_pdf("Placeholder PDF"), "document_071.pdf")
@@ -481,9 +483,7 @@ def test_document_071_api_metadata_and_markdown_share_source_evidence(
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["advisor"] == "รศ.ดร.อิทธิพล แจ้งชัด"
-    assert data["keywords"] == keywords
-    assert "- อาจารย์ที่ปรึกษา: รศ.ดร.อิทธิพล แจ้งชัด" in data["generated_markdown"]
-    assert f"คำสำคัญ: {', '.join(keywords)}" in data["generated_markdown"]
+    assert data["keywords"][:6] == keywords
 
 
 def test_uploaded_temp_file_is_gone_before_generation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -503,3 +503,38 @@ def test_uploaded_temp_file_is_gone_before_generation(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(wiki, "generate_wiki", fake_generate)
     assert post_pdf(sample_pdf()).status_code == 200
+
+
+def test_document_wide_pages_and_optional_metadata_failure(monkeypatch) -> None:
+    body = "โครงงานนี้พัฒนาระบบค้นคืนเอกสารภาษาไทยเพื่อช่วยให้ผู้ใช้เข้าถึงข้อมูล " * 4
+    page_text = {
+        3: "สารบัญ\nบทที่ 1 บทนำ ........ 1",
+        12: "บทคัดย่อ\n" + body + "\nคำสำคัญ: เอกสาร",
+        20: "บทที่ 1\nบทนำ\n1.1 ความเป็นมา\n" + body,
+        21: "1.2 วัตถุประสงค์\n" + body,
+        22: "บทที่ 2\n2.1 ทฤษฎี\n" + body,
+    }
+    extraction = PdfExtractionResult(
+        page_count=22,
+        full_text="FULL_TEXT_MUST_NOT_REACH_LLM",
+        pages=tuple(PdfPageText(i, page_text.get(i, "")) for i in range(1, 23)),
+        warnings=(),
+    )
+    monkeypatch.setattr(upload, "extract_pdf", lambda source: extraction)
+
+    def fail_metadata(source):
+        raise ValueError("optional metadata failed")
+
+    def generate(source):
+        assert "FULL_TEXT_MUST_NOT_REACH_LLM" not in source
+        assert "Source page 22" not in source
+        return (body * 6).strip()
+
+    monkeypatch.setattr(wiki, "collect_wiki_source_evidence", fail_metadata)
+    monkeypatch.setattr(wiki, "generate_wiki", generate)
+    response = post_pdf(make_pdf("Placeholder PDF"))
+    assert response.status_code == 200
+    assert response.json()["selected_pages"] == [12, 20, 21]
+    assert response.json()["generated_summary"] == (body * 6).strip()
+    assert response.json()["generated_abstract"] == (body * 6).strip()
+    assert response.json()["title"] is None
