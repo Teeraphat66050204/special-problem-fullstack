@@ -32,6 +32,8 @@ def diagnose(
             row.update(
                 selected_pages=selection.selected_pages,
                 source_characters=len(selection.source_text),
+                summary_selected_pages=selection.summary_selected_pages,
+                summary_source_characters=len(selection.summary_source_text),
             )
         except ValueError as exc:
             row["error"] = str(exc)

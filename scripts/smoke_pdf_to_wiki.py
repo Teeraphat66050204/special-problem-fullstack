@@ -1,31 +1,29 @@
-"""Run the existing PDF -> focused Wiki source -> Ollama pipeline locally."""
+"""Run PDF -> focused source -> project metadata/summary locally."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
-from app.prompts import WikiStructureIssue
-from app.prompts.abstract_generation import validate_abstract
+from app.prompts.project_summary import validate_project_summary
 from app.services.llm_service import (
-    InvalidWikiMarkdownError,
+    InvalidProjectSummaryError,
     LLMServiceError,
     OllamaTimeoutError,
     OllamaUnavailableError,
-    generate_wiki,
+)
+from app.services.llm_service import (
+    generate_project_summary_result as generate_wiki,
 )
 from app.services.pdf_extractor import PdfExtractionError, extract_pdf
+from app.services.wiki_evidence import collect_wiki_source_evidence
 from app.services.wiki_source import prepare_wiki_source
 
 
-def _print_validation_issues(issues: tuple[WikiStructureIssue, ...]) -> None:
-    for issue in issues:
-        print(f"  - {issue.message}", file=sys.stderr)
-
-
 def run(pdf_path: Path) -> int:
-    """Print the selected source and generated Markdown; return a shell exit code."""
+    """Print selected source and combined project output; return a shell exit code."""
 
     if not pdf_path.is_file():
         print(f"PDF not found: {pdf_path}", file=sys.stderr)
@@ -49,42 +47,48 @@ def run(pdf_path: Path) -> int:
         return 1
 
     print(f"Selected Wiki source (pages {', '.join(map(str, selection.selected_pages))}):")
-    print(selection.source_text)
+    print(selection.summary_source_text)
     print()
 
     try:
-        markdown = generate_wiki(selection.source_text)
+        generation = generate_wiki(selection.summary_source_text)
     except OllamaUnavailableError as exc:
         print(f"Ollama unavailable: {exc}", file=sys.stderr)
         return 1
     except OllamaTimeoutError as exc:
         print(f"Ollama timeout: {exc}", file=sys.stderr)
         return 1
-    except InvalidWikiMarkdownError as exc:
-        print("Invalid Wiki Markdown returned by Ollama:", file=sys.stderr)
-        _print_validation_issues(exc.issues)
+    except InvalidProjectSummaryError as exc:
+        print("Invalid project summary returned by Ollama:", file=sys.stderr)
+        print(", ".join(exc.issues), file=sys.stderr)
         return 1
     except LLMServiceError as exc:
         print(f"Wiki generation failed: {exc}", file=sys.stderr)
         return 1
 
-    print("Generated Thai abstract:")
-    print(markdown)
+    summary = generation if isinstance(generation, str) else generation.generated_summary
+    evidence = collect_wiki_source_evidence(selection.source_text)
+
+    print("Project metadata:")
+    print(json.dumps(evidence.project_metadata(), ensure_ascii=False, indent=2))
+    print()
+    print("Generated Thai project summary:")
+    print(summary)
     print()
 
-    validation = validate_abstract(markdown)
+    validation = validate_project_summary(summary)
     if not validation.is_valid:
-        print("Invalid abstract:", file=sys.stderr)
+        print("Invalid project summary:", file=sys.stderr)
         print(", ".join(validation.issues), file=sys.stderr)
         return 1
 
-    print("Abstract structure: valid")
+    print("Project summary: valid")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Generate a Thai abstract from document-wide focused PDF source"
+        description="Generate project metadata and a Thai summary from focused PDF source"
     )
     parser.add_argument("pdf", type=Path, help="Path to a digital PDF")
     arguments = parser.parse_args(argv)

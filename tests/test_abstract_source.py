@@ -100,6 +100,59 @@ def test_abstract_continues_and_stops_at_keywords():
     assert "DO_NOT_INCLUDE" not in result.source_text
 
 
+@pytest.mark.parametrize("heading", ["บทคัดยอ", "บทคัดย'อ", "บ ท คั ด ย่ อ"])
+def test_noisy_thai_abstract_heading_requires_body_and_rejects_toc(heading):
+    result = prepare_wiki_source(
+        extraction(
+            {
+                2: f"สารบัญ\n{heading} ........ ก\nบทที่ 1 บทนำ ........ 1",
+                4: f"{heading}\nผลการทดลองภาษาไทยที่มีเนื้อหาสาระเพียงพอสำหรับบทคัดย่อจริง\n{BODY}",
+            }
+        )
+    )
+
+    assert result.detection.abstract_pages == (4,)
+    assert result.summary_selected_pages == (4,)
+    assert "ผลการทดลองภาษาไทย" in result.summary_source_text
+
+
+def test_summary_source_prefers_thai_abstract_and_excludes_metadata_noise():
+    result = prepare_wiki_source(
+        extraction(
+            {
+                1: "ชื่อโครงงานที่ไม่ควรส่งเข้าโมเดล\nชื่อนักศึกษา สมชาย ใจดี",
+                4: "บทคัดย่อ\nผลการทดลองภาษาไทยใช้สูตร A 10% และให้ผลสูงสุด",
+                5: "Abstract\nEnglish duplicate of the experimental result.",
+                10: "บทที่ 1\nบทนำ\n1.1 ความเป็นมา\n" + BODY,
+                11: "1.2 วัตถุประสงค์\nพัฒนาระบบทดสอบ\n" + BODY,
+                12: "บทที่ 2\n2.1 ทฤษฎี\n" + BODY,
+            }
+        )
+    )
+
+    assert "ผลการทดลองภาษาไทย" in result.summary_source_text
+    assert "English duplicate" not in result.summary_source_text
+    assert "ชื่อโครงงานที่ไม่ควรส่งเข้าโมเดล" not in result.summary_source_text
+    assert "ชื่อนักศึกษา" not in result.summary_source_text
+    assert "1.1 ความเป็นมา" in result.summary_source_text
+    assert "1.2 วัตถุประสงค์" in result.summary_source_text
+    assert result.selected_pages == tuple(sorted({page.page_number for page in result.pages}))
+
+
+def test_summary_source_falls_back_to_english_abstract():
+    result = prepare_wiki_source(
+        extraction(
+            {
+                1: "Title page metadata",
+                4: "Abstract\nActual English experimental result with value 42.",
+            }
+        )
+    )
+
+    assert "Actual English experimental result" in result.summary_source_text
+    assert "Title page metadata" not in result.summary_source_text
+
+
 def test_budgets_prefer_thai_and_late_relevant_sections():
     result = prepare_wiki_source(
         extraction(
@@ -122,6 +175,30 @@ def test_budgets_prefer_thai_and_late_relevant_sections():
     assert "IMPORTANT_OBJECTIVE" in result.source_text
     assert "IMPORTANT_SCOPE" in result.source_text
     assert "IRRELEVANT_SCHEDULE" not in result.source_text
+
+
+def test_focused_chapter_excludes_recognized_inventory_and_admin_sections():
+    result = prepare_wiki_source(
+        extraction(
+            {
+                10: f"บทที่ 1\nบทนำ\n1.1. ความเป็นมา\nBACKGROUND\n{BODY}",
+                11: f"1.2. วัตถุประสงค์\nOBJECTIVE\n{BODY}",
+                12: (
+                    f"1.4. ขอบเขต\nSCOPE DPU YOLOv4 Visual Search\n{BODY}\n"
+                    "1.6. อุปกรณ์และเครื่องมือที่ใช้\n"
+                    "INVENTORY Apple MacBook Dell PowerEdge Nvidia Tesla V100"
+                ),
+                13: "1.7. เงื่อนไข/ข้อจำกัด\nADMINISTRATIVE_PROJECT_SUPERVISOR_CONDITIONS",
+                14: f"บทที่ 2\n2.1 ทฤษฎี\n{BODY}",
+            }
+        )
+    )
+
+    assert "BACKGROUND" in result.summary_source_text
+    assert "OBJECTIVE" in result.summary_source_text
+    assert "SCOPE DPU YOLOv4 Visual Search" in result.summary_source_text
+    assert "INVENTORY" not in result.summary_source_text
+    assert "ADMINISTRATIVE_PROJECT_SUPERVISOR_CONDITIONS" not in result.summary_source_text
 
 
 def test_no_useful_source_fails_even_with_metadata():
@@ -201,3 +278,22 @@ def test_real_fixture_chapter_one_after_long_front_matter():
     assert result.detection.chapter_end == 27
     assert result.detection.chapter_two_start == 28
     assert {25, 26, 27} <= set(result.selected_pages)
+
+
+def test_document_339_prefers_noisy_thai_abstract_and_focuses_chapter_one():
+    from app.services.pdf_extractor import extract_pdf
+
+    path = Path(__file__).parent / "fixtures" / "sample" / "document_339.pdf"
+    result = prepare_wiki_source(extract_pdf(path))
+
+    assert result.detection.abstract_pages == (4, 5)
+    assert result.summary_pages[0].role == "Thai abstract"
+    assert result.summary_selected_pages == (4, 14, 15, 16)
+    assert len(result.summary_source_text) < 8969
+    assert "การปฏิบัติสหกิจในครั้งนี้" in result.summary_source_text
+    assert all(term in result.summary_source_text for term in ("DPU", "YOLOv4", "Visual Search"))
+    assert "Apple MacBook" not in result.summary_source_text
+    assert "Dell PowerEdge" not in result.summary_source_text
+    assert "ผู้ดูแลโครงการ" not in result.summary_source_text
+    assert "1.6." not in result.summary_source_text
+    assert "1.7." not in result.summary_source_text

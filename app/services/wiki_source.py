@@ -21,7 +21,7 @@ def _compact(line: str) -> str:
 
 
 _CHAPTER = re.compile(r"^(?:บท(?:ที่)?([1-9๑-๙])|chapter([1-9]|one|two))(?=$|[^0-9๑-๙])", re.I)
-_SECTION = re.compile(r"^1\.[0-9]+(?![0-9.])(?:\s|$)")
+_SECTION = re.compile(r"^1\.(?P<number>[0-9]+)(?:\.)?(?![0-9.])(?:\s|$)")
 _LEADER = re.compile(r"\.{3,}|…{2,}|[·_]{3,}")
 _RELEVANT = (
     "ที่มา",
@@ -47,11 +47,29 @@ _RELEVANT = (
 )
 _METADATA = re.compile(
     r"หัวข้อ(?:โครงงาน|สหกิจศึกษา|ปัญหาพิเศษ)|ชื่อ(?:โครงงาน|โครงการ|นักศึกษา)|"
-    r"รหัสนักศึกษา|อาจารย์ที่ปรึกษา|ปีการศึกษา|"
-    r"^(?:project title|english title|title|students?|student ids?|advisor|academic year)\b",
+    r"รหัสนักศึกษา|อาจารย์ที่ปรึกษา|ปีการศึกษา|ภาควิชา|สาขาวิชา|คณะ|"
+    r"สถาบันการศึกษา|ชื่อสถาบัน|ประเภท(?:โครงงาน|โครงการ)|"
+    r"^(?:project title|english title|title|students?|student ids?|advisor|academic year|"
+    r"department|faculty|institution|university|project type)\b",
     re.I,
 )
 _KEYWORDS = re.compile(r"^(?:คำ\s*สำ\s*คัญ|keywords?)\s*[:：]?", re.I)
+_CHAPTER_STOP_HEADINGS = (
+    "อุปกรณ์และเครื่องมือที่ใช้",
+    "เครื่องมือที่ใช้",
+    "ฮาร์ดแวร์และซอฟต์แวร์",
+    "เงื่อนไข",
+    "ข้อจำกัด",
+    "ตารางเวลา",
+    "แผนการดำเนินงาน",
+    "บุคลากร",
+    "equipment and tools",
+    "hardware and software",
+    "project conditions",
+    "administrative limitations",
+    "schedule",
+    "personnel",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +126,32 @@ class WikiSourceSelection:
     def selected_pages(self) -> tuple[int, ...]:
         return tuple(sorted({page.page_number for page in self.pages}))
 
+    @property
+    def summary_pages(self) -> tuple[WikiSourcePage, ...]:
+        """Return summary evidence without title or project-metadata noise."""
+
+        thai_abstract = tuple(page for page in self.pages if page.role == "Thai abstract")
+        abstract = thai_abstract or tuple(
+            page for page in self.pages if page.role == "English abstract"
+        )
+        chapter = tuple(page for page in self.pages if page.role == "Chapter 1")
+        return (*abstract, *chapter)
+
+    @property
+    def summary_selected_pages(self) -> tuple[int, ...]:
+        """Return contributing summary pages once, preserving source order."""
+
+        return tuple(dict.fromkeys(page.page_number for page in self.summary_pages))
+
+    @property
+    def summary_source_text(self) -> str:
+        """Render the focused source supplied to project-summary generation."""
+
+        return "\n\n".join(
+            f"Source page {page.page_number} ({page.role}):\n{page.text}"
+            for page in self.summary_pages
+        )
+
 
 def _chapter(line: str) -> int | None:
     match = _CHAPTER.match(_compact(line))
@@ -135,7 +179,40 @@ def _toc(lines: list[str]) -> bool:
 
 
 def _abstract(line: str) -> str | None:
-    return {"บทคัดย่อ": "Thai abstract", "abstract": "English abstract"}.get(_compact(line))
+    compact = _compact(line)
+    if compact == "abstract":
+        return "English abstract"
+    if any(
+        character.isdigit() or character.isascii() and character.isalpha() for character in compact
+    ):
+        return None
+    thai = "".join(character for character in compact if "ก" <= character <= "๛")
+    if thai in ("บทคัดย่อ", "บทคัดยอ"):
+        return "Thai abstract"
+    return None
+
+
+def _semantic_heading_key(value: str) -> str:
+    """Normalize recognized section headings without rewriting retained source text."""
+
+    plain = unicodedata.normalize("NFD", _plain(value).casefold())
+    if any("ก" <= character <= "๛" for character in plain):
+        return "".join(
+            character
+            for character in plain
+            if "ก" <= character <= "๛" and unicodedata.category(character) != "Mn"
+        )
+    return "".join(character for character in plain if character.isascii() and character.isalnum())
+
+
+def _chapter_stop_heading(heading: str) -> bool:
+    key = _semantic_heading_key(heading)
+    return any(_semantic_heading_key(term) in key for term in _CHAPTER_STOP_HEADINGS)
+
+
+def _section_number(heading: str) -> int | None:
+    match = _SECTION.match(heading)
+    return int(match.group("number")) if match else None
 
 
 def _boundary(line: str) -> bool:
@@ -339,11 +416,17 @@ def prepare_wiki_source(
                 elif chunks[-1][0] and _SECTION.fullmatch(chunks[-1][0]) and len(plain) < 140:
                     chunks[-1] = (chunks[-1][0] + " " + plain, chunks[-1][1])
                 chunks[-1][1].append((pi, line))
+        excluded = [heading for heading, _ in chunks if _chapter_stop_heading(heading)]
+        chunks = [chunk for chunk in chunks if not _chapter_stop_heading(chunk[0])]
+        signals.extend(
+            f"focused Chapter 1 excluded unrelated section: {heading}" for heading in excluded
+        )
         relevant = [
             chunk
             for chunk in chunks
             if (
-                chunk[0].startswith("1.1 ") or any(word in _compact(chunk[0]) for word in _RELEVANT)
+                _section_number(chunk[0]) == 1
+                or any(word in _compact(chunk[0]) for word in _RELEVANT)
             )
         ]
         budget = min(policy.chapter_characters, remaining)

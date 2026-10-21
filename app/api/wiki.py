@@ -1,4 +1,4 @@
-"""Generate Thai abstract drafts and publish separate human-reviewed Wiki versions."""
+"""Generate project metadata/summary drafts and publish reviewed Wiki versions."""
 
 import logging
 from typing import Annotated, Literal
@@ -11,11 +11,11 @@ from sqlmodel import Session, select
 from app.db import get_session
 from app.models import Document, ExtractionStatus, WikiPage, WikiStatus
 from app.prompts import validate_wiki_markdown
-from app.prompts.abstract_generation import validate_abstract
+from app.prompts.project_summary import validate_project_summary
 from app.services.document_extraction import StoredExtractionError, extraction_from_document
 from app.services.llm_service import (
     EmptyModelResponseError,
-    InvalidAbstractError,
+    InvalidProjectSummaryError,
     InvalidWikiMarkdownError,
     InvalidWikiOutputError,
     LLMServiceError,
@@ -23,7 +23,9 @@ from app.services.llm_service import (
     OllamaRuntimeError,
     OllamaTimeoutError,
     OllamaUnavailableError,
-    generate_wiki,
+)
+from app.services.llm_service import (
+    generate_project_summary_result as generate_wiki,
 )
 from app.services.pdf_extractor import PdfExtractionWarning
 from app.services.wiki_evidence import WikiSourceEvidence, collect_wiki_source_evidence
@@ -34,6 +36,16 @@ logger = logging.getLogger("uvicorn.error")
 router = APIRouter()
 
 
+def _log_ollama_diagnostics(document_id: int, error: LLMServiceError) -> None:
+    diagnostics = getattr(error, "diagnostics", None)
+    if diagnostics is not None:
+        logger.warning(
+            "wiki.generate Ollama failure document_id=%s diagnostics=%s",
+            document_id,
+            diagnostics.as_dict(),
+        )
+
+
 class DraftWikiRequest(BaseModel):
     """Reference an existing successfully extracted Document."""
 
@@ -41,16 +53,21 @@ class DraftWikiRequest(BaseModel):
 
 
 class DraftWikiResponse(BaseModel):
-    """Abstract draft tied to a Document, without persistence or publication."""
+    """Project metadata and summary tied to a Document, without persistence."""
 
     status: Literal["draft"] = "draft"
     document_id: int
     original_filename: str
     page_count: int
     selected_pages: tuple[int, ...]
-    generated_abstract: str
+    metadata: "ProjectMetadataResponse"
+    generated_summary: str
+    generated_abstract: str = Field(
+        description="Deprecated alias of generated_summary.",
+        deprecated=True,
+    )
     generated_markdown: str = Field(
-        description=("Deprecated alias of generated_abstract; contains plain text."),
+        description="Deprecated alias of generated_summary; contains plain text.",
         deprecated=True,
     )
     structure_valid: bool
@@ -62,6 +79,19 @@ class DraftWikiResponse(BaseModel):
     advisor: str | None
     academic_year: str | None
     keywords: tuple[str, ...]
+
+
+class ProjectMetadataResponse(BaseModel):
+    title_th: str | None = None
+    title_en: str | None = None
+    students: tuple[str, ...] = ()
+    student_ids: tuple[str, ...] = ()
+    academic_year: str | None = None
+    advisor: str | None = None
+    department: str | None = None
+    faculty: str | None = None
+    institution: str | None = None
+    project_type: str | None = None
 
 
 class PublishWikiRequest(BaseModel):
@@ -171,18 +201,18 @@ def publish_reviewed_wiki(
 @router.post(
     "/api/wiki/generate",
     response_model=DraftWikiResponse,
-    summary="Generate a Thai abstract draft from an uploaded Document",
+    summary="Generate project metadata and a Thai summary from an uploaded Document",
     description=(
         "Send the `document_id` returned by `POST /api/upload`. Document-wide abstract "
-        "and real Chapter 1 detection selects focused excerpts and optional metadata "
-        "from persisted extraction. The model returns one concise Thai abstract draft, "
-        "validated and returned without persistence or automatic publication."
+        "and real Chapter 1 detection selects focused excerpts and deterministic metadata "
+        "from persisted extraction. The model returns only a moderately detailed Thai "
+        "summary; Python combines both without persistence or publication."
     ),
     responses={
         404: {"description": "Document not found"},
         409: {"description": "Document extraction is incomplete or unavailable"},
         422: {"description": "No usable focused source"},
-        502: {"description": "Ollama returned an invalid abstract or runtime error"},
+        502: {"description": "Ollama returned an invalid project summary or runtime error"},
         503: {"description": "Ollama or the configured model is unavailable"},
         504: {"description": "Ollama generation timed out"},
     },
@@ -219,53 +249,78 @@ def generate_draft_wiki(
         with time_wiki_stage("evidence_extraction"):
             try:
                 evidence = collect_wiki_source_evidence(selection.source_text)
+                for warning in evidence.warnings:
+                    logger.warning(
+                        "wiki.generate metadata warning document_id=%s code=%s message=%s",
+                        request.document_id,
+                        warning.code,
+                        warning.message,
+                    )
             except Exception:
-                logger.exception("Optional abstract metadata extraction failed")
+                logger.exception("Optional deterministic project metadata extraction failed")
                 evidence = WikiSourceEvidence(None, None, (), (), None, None, ())
 
         try:
-            markdown = generate_wiki(selection.source_text)
+            generation = generate_wiki(selection.summary_source_text)
         except OllamaUnavailableError as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
             raise HTTPException(status_code=503, detail="Ollama is unavailable") from exc
         except OllamaModelNotFoundError as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
             raise HTTPException(
                 status_code=503, detail="Configured Ollama model is unavailable"
             ) from exc
         except OllamaTimeoutError as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
             raise HTTPException(status_code=504, detail="Wiki generation timed out") from exc
         except (
-            InvalidAbstractError,
+            InvalidProjectSummaryError,
             InvalidWikiMarkdownError,
             InvalidWikiOutputError,
             EmptyModelResponseError,
         ) as exc:
-            raise HTTPException(status_code=502, detail="Generated abstract is invalid") from exc
+            _log_ollama_diagnostics(request.document_id, exc)
+            raise HTTPException(
+                status_code=502, detail="Generated project summary is invalid"
+            ) from exc
         except OllamaRuntimeError as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
             raise HTTPException(status_code=502, detail="Ollama generation failed") from exc
         except LLMServiceError as exc:
+            _log_ollama_diagnostics(request.document_id, exc)
             raise HTTPException(status_code=502, detail="Wiki generation failed") from exc
         except Exception as exc:
-            raise HTTPException(status_code=500, detail="Could not generate Draft Wiki") from exc
+            raise HTTPException(
+                status_code=500, detail="Could not generate project summary"
+            ) from exc
+
+        # String support keeps integrations that monkeypatch the former generator
+        # working while production returns a result carrying summary diagnostics.
+        summary = generation if isinstance(generation, str) else generation.generated_summary
 
         with time_wiki_stage("validation"):
-            validation = validate_abstract(markdown)
+            validation = validate_project_summary(summary)
         if not validation.is_valid:
-            raise HTTPException(status_code=502, detail="Generated abstract has invalid structure")
+            raise HTTPException(status_code=502, detail="Generated project summary is invalid")
+
+        metadata = ProjectMetadataResponse(**evidence.project_metadata())
 
         return DraftWikiResponse(
             document_id=request.document_id,
             original_filename=document.original_filename,
             page_count=extraction.page_count,
             selected_pages=selection.selected_pages,
-            generated_abstract=markdown,
-            generated_markdown=markdown,
+            metadata=metadata,
+            generated_summary=summary,
+            generated_abstract=summary,
+            generated_markdown=summary,
             structure_valid=validation.is_valid,
             warnings=extraction.warnings,
-            title=evidence.title,
-            english_title=evidence.title_en,
-            students=evidence.students,
-            student_ids=evidence.student_ids,
-            advisor=evidence.advisor,
-            academic_year=evidence.academic_year,
+            title=evidence.title or metadata.title_th,
+            english_title=metadata.title_en,
+            students=metadata.students,
+            student_ids=metadata.student_ids,
+            advisor=metadata.advisor,
+            academic_year=metadata.academic_year,
             keywords=evidence.keywords,
         )

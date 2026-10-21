@@ -168,13 +168,15 @@ def test_generate_endpoint_still_does_not_persist_wiki_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     document_id = persist_document(api_database, completed=True)
-    markdown = "โครงงานนี้พัฒนาระบบค้นคืนเอกสารภาษาไทยเพื่อสนับสนุนการเข้าถึงข้อมูล"
+    sentence = "โครงงานนี้พัฒนาระบบค้นคืนเอกสารภาษาไทยเพื่อสนับสนุนการเข้าถึงข้อมูล"
+    markdown = " ".join(sentence for _ in range(6))
     monkeypatch.setattr(wiki, "generate_wiki", lambda source: markdown)
 
     response = TestClient(app).post("/api/wiki/generate", json={"document_id": document_id})
 
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "draft"
+    assert response.json()["generated_summary"] == markdown
     assert response.json()["generated_markdown"] == markdown
     with Session(api_database) as session:
         assert session.exec(select(WikiPage)).all() == []

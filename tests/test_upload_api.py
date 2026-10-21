@@ -127,7 +127,7 @@ def test_targeted_chapter_ocr_runs_before_temporary_pdf_removal_and_is_reused(
     def generate(source):
         assert "Source page 15 (Chapter 1)" in source
         assert "1.1 ความเป็นมา" in source
-        return body.strip()
+        return (body * 6).strip()
 
     monkeypatch.setattr(wiki, "generate_wiki", generate)
     result = TestClient(app).post("/api/wiki/generate", json={"document_id": document_id})

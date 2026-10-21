@@ -1,6 +1,6 @@
 """Legacy seven-section benchmark prompt and human-reviewed publication contract.
 
-Production generation uses app.prompts.abstract_generation.
+Production generation uses app.prompts.project_summary.
 """
 
 from __future__ import annotations

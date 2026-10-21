@@ -1,9 +1,9 @@
 # Task 2.1 Wiki generation prompt
 
 > Historical seven-section Wiki contract. Production generation now returns a
-> [Thai abstract draft](abstract-generation.md). Legacy evaluation/benchmark code
+> [project metadata and Thai summary draft](abstract-generation.md). Legacy code
 > explicitly retains the old selector and contract. Existing results remain
-> unchanged; a new abstract benchmark must be run separately in the future.
+> unchanged; the project-summary smoke benchmark is separate.
 
 Task 2.3 refines this prompt for focused PDF source text. It separates aims from
 measured results, requires explicit evidence for tools/materials/technologies,

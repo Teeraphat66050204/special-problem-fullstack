@@ -1,9 +1,9 @@
 # Special Project Repository and Retrieval
 
-This repository contains the backend foundation, a persisted PDF-extraction-to-Draft-Wiki
+This repository contains the backend foundation, a persisted PDF-to-project-summary
 flow, conditional front-matter OCR support, and deterministic Wiki Markdown chunking. It
-does not include Wiki publishing/persistence, embeddings, semantic search, or frontend
-code yet.
+also supports separate human-reviewed Wiki publication. Embeddings, semantic search,
+and frontend code are not included.
 
 ## Current API flows
 
@@ -14,7 +14,7 @@ POST /api/upload
 Store digital PDF temporarily
         |
         v
-PyMuPDF extractor (all pages) -> conditional OCR fallback (front matter only)
+PyMuPDF extractor (all pages) -> front-matter OCR -> bounded missing-Chapter-1 OCR
         |
         v
 Persist Document text, page provenance, warnings, and metadata
@@ -28,17 +28,19 @@ POST /api/wiki/generate
 Load Document by document_id -> reconstruct page-aware extraction
         |
         v
-Focused title/metadata/abstract/keyword source
+Document-wide abstract + real Chapter 1 detection + optional metadata
         |
         v
-Ollama/Qwen -> source-backed finalization -> Draft Wiki JSON (no persistence)
+Ollama -> plain Thai summary -> deterministic metadata merge -> draft JSON
 ```
 
 The extractor accepts a filesystem path or a binary file-like object such as
 `UploadFile.file`. PyMuPDF remains the primary path and returns cleaned full text,
 page count, one-based per-page text, and typed warnings for blank pages. A separate
 deterministic quality gate may invoke a configured OCR provider for degraded pages
-1–6 only. Native and OCR text are retained with per-page provenance; clean native
+1–6. If Chapter 1 is still missing, uploads may OCR up to six additional targeted
+pages anywhere in the PDF. See [chapter recovery](docs/chapter-ocr-fallback.md).
+Native and OCR text are retained with per-page provenance; clean native
 text is not replaced by lower-quality OCR. Extraction never performs database writes.
 
 ## Data model
@@ -141,11 +143,14 @@ OCR is disabled by default. To enable the built-in Typhoon API provider, copy
 `TYPHOON_API_KEY`. The defaults use `https://api.opentyphoon.ai/v1` and the
 recommended `typhoon-ocr` model; override them with `TYPHOON_BASE_URL` and
 `TYPHOON_OCR_MODEL` when needed. `OCR_TIMEOUT_SECONDS` defaults to 120 and
-`OCR_MAX_PAGES` defaults to 6 and cannot exceed 6.
+`OCR_MAX_PAGES` defaults to 6 and cannot exceed 6. `CHAPTER_OCR_MAX_PAGES`
+defaults to 6 (range 0–6) and bounds the additional Chapter 1 recovery pass.
 
 PyMuPDF always extracts first. Deterministic quality checks decide whether OCR is
 needed, so clean PDFs make no Typhoon request. Only degraded pages in the first
-six pages are rendered and sent. Native and OCR text are both retained with
+six pages are rendered and sent in that front-matter stage. Chapter recovery
+renders only its bounded candidates when native Chapter 1 detection fails.
+Native and OCR text are both retained with
 `pymupdf`, `ocr`, or `mixed` page provenance. Missing configuration, timeouts,
 HTTP errors, and malformed provider responses preserve native text and add a safe
 warning without exposing credentials. See [Typhoon OCR setup](docs/ocr.md).
@@ -164,7 +169,7 @@ The command reports native quality, OCR page/provenance decisions, and
 deterministic metadata evidence before and after OCR. It exits non-zero when a
 degraded document cannot run OCR because of configuration or provider failure.
 
-## Draft Wiki generation API
+## Project metadata and summary API
 
 The intended frontend flow has two requests:
 
@@ -173,21 +178,25 @@ The intended frontend flow has two requests:
 2. Send `{"document_id": 123}` as JSON to `POST /api/wiki/generate`.
 
 The generation route loads the persisted extraction and never requires the PDF
-again. It reconstructs page provenance, selects only front-matter Wiki source,
-calls the existing Ollama service, and returns a validated draft without
-persisting the Markdown. Both request schemas are visible at `/docs`.
+again. It scans every extracted page for Thai/English abstracts and real Chapter 1,
+rejects TOC entries, extracts project metadata deterministically, and sends
+character-budgeted excerpts to Ollama for a plain-text Thai summary. It returns
+the combined metadata and validated summary without
+persistence or publication. Both request schemas are visible at `/docs`.
 
-The JSON response includes `status: "draft"`, `document_id`, `original_filename`,
-`page_count`, `selected_pages` (one-based), `generated_markdown`,
-`structure_valid`, and extractor `warnings`.
-Source-backed metadata fields are `title`, `english_title`, `students`,
-`student_ids`, `advisor`, `academic_year`, and explicit `keywords`; missing values
-remain `null` or empty arrays. No full PDF text is returned or sent to Ollama.
+The JSON response includes `metadata`, `generated_summary`, `status: "draft"`,
+`document_id`, `original_filename`, `page_count`, `selected_pages` (one-based
+contributing PDF pages), `structure_valid`, and extractor `warnings`. Metadata
+contains Thai/English titles, students, IDs, academic year, advisor, department,
+faculty, institution, and project type. Missing scalar values remain `null`; missing
+list values remain empty arrays. `generated_abstract`, `generated_markdown`, and the
+older top-level metadata fields remain deprecated compatibility aliases. No full
+PDF text is returned or sent to Ollama.
 
 An unknown `document_id` returns 404, a Document whose extraction is incomplete
 or unavailable returns 409, and a Document without usable focused source returns
-422. Ollama runtime/model unavailability returns 503, timeout 504, and invalid
-generated Wiki 502. Unexpected generation failures return 500. Errors use
+422. Ollama runtime/model unavailability returns 503, timeout 504, and an invalid
+project summary returns 502. Unexpected failures return 500. Errors use
 FastAPI's `detail` field.
 
 For a real local smoke test, start the API and Ollama, pull the configured model,
@@ -209,7 +218,7 @@ curl.exe -X POST http://localhost:8000/api/upload -F "file=@data/sample/document
 curl.exe -X POST http://localhost:8000/api/wiki/generate -H "Content-Type: application/json" -d '{"document_id":1}'
 ```
 
-The extracted Document is persisted for reuse; the returned Markdown remains an
+The extracted Document is persisted for reuse; the returned summary remains an
 unpublished draft and is not persisted.
 
 ## Reusable sample dataset and Wiki input
@@ -219,40 +228,42 @@ Sample PDFs belong in `data/sample/` locally and are ignored by Git to keep the
 repository small. The schema, archive layout, and restore instructions are in
 [`docs/evaluation-dataset.md`](docs/evaluation-dataset.md).
 
-Wiki generation uses a focused source prepared by
-`app.services.wiki_source.prepare_wiki_source` from extracted title/front-matter,
-abstract, keyword, and essential metadata pages. It does not send the entire
-PDF text to the LLM by default. The full-document extraction is persisted on the
-`Document` for later page-aware processing.
+Project-summary generation uses `app.services.wiki_source.prepare_wiki_source` to scan all
+extracted pages. It prefers Thai abstracts, retains English supplemental evidence,
+and selects relevant Chapter 1 subsections until a real Chapter 2 boundary.
+A 24,000-character total budget includes source labels; no full-document text is
+sent to Ollama. See [the project-summary pipeline guide](docs/abstract-generation.md)
+for heuristics, budgets, diagnostics, and limitations.
 
-## Local Wiki generation service
+## Local project-summary generation service
 
-`app.services.llm_service.generate_wiki(source_text: str) -> str` builds the
-existing Task 2.1 prompt, sends it to Ollama, and returns Markdown only when the
-existing structure validator accepts it. For focused PDF sources, a provider-neutral
-finalization step copies exact readable title and metadata from selected pages,
-removes unsupported metadata bullets, and makes standalone missing-information
-markers exact. Unsafe marker explanations cause a service error. The Ollama HTTP details live in
-`OllamaClient`; callers can handle `LLMServiceError` subclasses for unavailable
-runtime, missing model, timeout, empty output, invalid structure, and other
-runtime errors. Structural validation checks headings, not factual grounding.
+`app.services.llm_service.generate_project_summary_result(source_text)` uses
+`build_project_summary_prompt`, keeps the model's plain-text response, and checks
+the Thai summary for obvious failures. Metadata comes only from deterministic
+focused-source evidence and is merged by Python after generation. The 700–1200-character
+target is guidance rather than a hard limit. `generate_abstract` and `generate_wiki`
+remain deprecated summary-only compatibility adapters. The old seven-section Wiki
+prompt, finalizer, and validator remain available for historical evaluation and
+the separate human-reviewed Wiki publication API.
 
-Before strict structure validation, finalization maps only known heading aliases
-to the seven canonical headings, inserts wholly missing sections with the exact
-missing-information marker, and merges distinct content under duplicate canonical
-headings. A model-produced `คำสำคัญ` section is folded into the overview as a
-normal keyword line and is not accepted as an eighth heading. Other unknown
-headings remain so the strict validator can reject them. The smoke script and
-draft API both use this same generation path.
+The validator checks format and obvious meta commentary, not factual accuracy.
+`OllamaClient` retains environment-driven model, URL, timeout, and temperature;
+`think=False` is still optional per request and is never forced globally.
+Requests remain non-streaming. Ollama exceptions retain model, elapsed time,
+status and body when available, the underlying exception, and a categorized
+connection/reset/protocol/runtime diagnosis for logs and benchmark artifacts.
 
 The default model is `qwen2.5:7b-instruct`. Settings read `OLLAMA_BASE_URL`
 (default `http://localhost:11434`), `OLLAMA_MODEL`,
-`OLLAMA_TIMEOUT_SECONDS` (default 120), and `OLLAMA_TEMPERATURE` (default 0.2)
-from environment variables or `.env`. The API container uses
+`OLLAMA_TIMEOUT_SECONDS` (default 120), `OLLAMA_TEMPERATURE` (default 0.2), and
+`OLLAMA_NUM_PREDICT` (default 800 for project-summary generation) from environment
+variables or `.env`. Set `OLLAMA_TIMEOUT_SECONDS=0` (or any negative value) to
+disable the HTTP timeout for long local generations. The API
+container uses
 `http://host.docker.internal:11434` by default to reach Ollama on the host;
 set `OLLAMA_API_BASE_URL` for Compose if the runtime is elsewhere. The direct
-host-run API reads `OLLAMA_BASE_URL`. Draft Wiki generation reads its `Document`
-but does not persist generated Markdown.
+host-run API reads `OLLAMA_BASE_URL`. Project-summary generation reads its
+`Document` but does not persist the generated result.
 
 To test manually after starting Ollama, install/pull the selected model and
 pass a UTF-8 file containing extracted document text to the smoke script:
@@ -273,15 +284,20 @@ focused-source script from the repository root:
 python scripts/smoke_pdf_to_wiki.py data/sample/document_071.pdf
 ```
 
-The script extracts the full PDF, prints the selected title/metadata, abstract,
-and keyword source text, and sends only that focused source to Ollama. It prints
-the generated Markdown and checks it with the existing Wiki structure validator.
-The source selector limits its scan to front matter; later chapters are not sent
-to the model. No document or Markdown is persisted. Set `OLLAMA_BASE_URL`,
-`OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` in `.env` or your environment as
-needed; start Ollama and pull the configured model before running the command.
+The script extracts the full PDF, selects focused abstract/Chapter 1/metadata
+excerpts, calls Ollama, and combines deterministic metadata with the validated
+plain-text summary. It performs no
+persistence. To inspect source selection without any OCR or Ollama calls, run:
 
-## Local Wiki generation evaluation
+```bash
+python -m scripts.diagnose_abstract_source data/sample
+```
+
+## Legacy Wiki generation evaluation
+
+This command and all existing reports use the OLD seven-section Wiki pipeline.
+They do not evaluate the project-summary pipeline. Use its separate smoke harness
+with a fresh output location and preserve historical artifacts.
 
 With the local sample PDFs restored and Ollama running, evaluate the indexed
 PDF/GroundTruth pairs and save a JSON report:
@@ -301,7 +317,17 @@ in [docs/wiki-generation-evaluation.md](docs/wiki-generation-evaluation.md).
 Reports keep the raw Ollama reply and the source-backed final Markdown so
 model omissions and finalization changes remain visible.
 
-## Wiki model benchmark
+## Legacy Wiki model benchmark
+
+This benchmark retains `legacy_wiki_source`, the old Wiki prompt/finalizer, and
+seven-section checks. Existing results remain historical artifacts.
+
+The project-summary pipeline has a separate harness for both **1 document × 3
+models** smoke runs and a sequential, resumable **20 documents × 3 models** full
+benchmark. New runs require a new output directory; full runs can explicitly reuse
+one with `--resume`, optionally adding `--rerun-failures`. See
+[the project-summary benchmark guide](docs/abstract-model-smoke-benchmark.md) for
+the fixed model/document lists, checkpoint rules, recorded metrics, and commands.
 
 After pulling the initial Qwen3 models, benchmark all 20 indexed PDF/Ground
 Truth pairs with thinking disabled through Ollama's native `think: false` option:

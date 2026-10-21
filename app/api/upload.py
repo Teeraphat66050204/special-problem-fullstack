@@ -160,6 +160,13 @@ def upload_pdf(
         try:
             selection = prepare_wiki_source(result)
             evidence = collect_wiki_source_evidence(selection.source_text)
+            for warning in evidence.warnings:
+                logger.warning(
+                    "wiki.upload metadata warning filename=%s code=%s message=%s",
+                    filename,
+                    warning.code,
+                    warning.message,
+                )
             title = evidence.title
             author = evidence.students[0] if evidence.students else None
             student_id = evidence.student_ids[0] if evidence.student_ids else None
